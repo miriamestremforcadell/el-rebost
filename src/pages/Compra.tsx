@@ -77,6 +77,7 @@ function AddItem({ listId, cats, stores, purchases, onClose }: { listId: number;
   const suggestions = useLiveQuery(() => db.products.toArray(), [], [])
   const save = async (force = false) => {
     if (!f.name?.trim()) return
+    if (f.estPrice !== undefined && (!Number.isFinite(f.estPrice) || f.estPrice < 0)) { alert('El preu estimat ha de ser 0 € o superior.'); return }
     const have = await findProduct(f.name)
     if (have && have.qty > 0 && !force) { setWarn(`Ja tens ${have.qty} ${have.unit} de «${have.name}» a casa. Vols afegir-ne més igualment?`); return }
     let item = { ...f, listId, name: f.name.trim() } as ListItem
