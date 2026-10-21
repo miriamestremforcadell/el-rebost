@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 247 243 234; --surface: 255 253 248; --surface2: 240 234 220; --ink: 34 44 37; --mute: 108 116 108; --line: 224 217 200;
+  --brand: 47 93 70; --brandsoft: 224 235 226; --sage: 143 169 144; --sand: 217 185 122; --warn: 176 118 24; --bad: 170 56 48;
+}
+:root.dark {
+  --bg: 22 32 26; --surface: 30 43 35; --surface2: 40 55 46; --ink: 238 240 232; --mute: 160 172 160; --line: 52 68 58;
+  --brand: 143 190 156; --brandsoft: 38 62 48; --sage: 120 150 126; --sand: 196 165 105; --warn: 224 170 80; --bad: 232 128 118;
+}
+html, body, #root { height: 100%; }
+body { @apply bg-bg text-ink font-sans antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+h1, h2 { @apply font-serif; }
+input, select, textarea { @apply w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-[16px] text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20; }
+input[type=checkbox] { @apply h-5 w-5 w-auto accent-[rgb(var(--brand))]; }
+label.f { @apply block text-xs font-medium text-mute mb-1; }
+.card { @apply rounded-xl2 border border-line bg-surface p-4 shadow-sm; }
+.btn { @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition active:scale-[.98]; }
+.btn-p { @apply btn bg-brand text-bg; }
+.dark .btn-p { @apply text-[#16201a]; }
+.btn-s { @apply btn border border-line bg-surface2 text-ink; }
+.btn-g { @apply btn text-brand; }
+.btn-d { @apply btn border border-bad/40 text-bad; }
+.chip { @apply inline-flex items-center rounded-full bg-brandsoft px-2.5 py-0.5 text-xs font-medium text-brand; }
+.chip-w { @apply chip bg-sand/25 text-warn; }
+.chip-b { @apply chip bg-bad/15 text-bad; }
+.page { padding: 1rem 1rem calc(6.5rem + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; animation: fade .18s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
+@media (prefers-reduced-motion: reduce) { .page { animation: none } }
+.nav { padding-bottom: env(safe-area-inset-bottom); }
