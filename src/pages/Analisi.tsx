@@ -71,6 +71,22 @@ export default function Analisi() {
       return [{ key, name: displayName, base: entries[0].base, stores: storePrices, difference: r2(storePrices[storePrices.length - 1].basePrice - storePrices[0].basePrice) }]
     }).sort((x, y) => y.difference - x.difference)
   }, [observations, purchases])
+  const potentialSavings = useMemo(() => priceComparisons.flatMap((item) => {
+    const latest = purchases
+      .filter((purchase) => purchase.status === 'Revisat')
+      .flatMap((purchase) => purchase.lines.map((line) => ({ purchase, line })))
+      .filter(({ line }) => line.name.trim().toLowerCase() === item.name.trim().toLowerCase())
+      .filter(({ line }) => (line.unit === 'g' || line.unit === 'kg' ? '€/kg' : line.unit === 'ml' || line.unit === 'l' ? '€/l' : `€/${line.unit}`) === item.base)
+      .sort((x, y) => y.purchase.date.localeCompare(x.purchase.date))[0]
+    if (!latest || latest.line.qty <= 0) return []
+    const line = latest.line
+    const unitPrice = line.amount / line.qty
+    const paidBasePrice = line.unit === 'g' ? unitPrice * 1000 : line.unit === 'ml' ? unitPrice * 1000 : unitPrice
+    const baseQty = line.unit === 'g' || line.unit === 'ml' ? line.qty / 1000 : line.qty
+    const saving = r2(Math.max(0, paidBasePrice - item.stores[0].basePrice) * baseQty)
+    return [{ key: item.key, name: item.name, base: item.base, storeName: stores.find((store) => store.id === latest.purchase.storeId)?.name ?? 'Establiment desconegut', cheapestStore: item.stores[0].storeName, quantity: line.qty, unit: line.unit, saving }]
+  }).filter((item) => item.saving > 0).sort((x, y) => y.saving - x.saving), [priceComparisons, purchases, stores])
+  const totalPotentialSavings = r2(potentialSavings.reduce((total, item) => total + item.saving, 0))
   const prices = priceSummary(priceObservations(purchases, stores))
   const nPurch = cur.filter((e) => e.source === 'compra').length
   const tick = { fontSize: 11, fill: 'rgb(var(--mute))' }
@@ -108,6 +124,13 @@ export default function Analisi() {
           <div className="mb-1 flex items-start justify-between gap-2"><b>{item.name}</b><span className="shrink-0 text-xs text-mute">{item.base}</span></div>
           <div className="space-y-1">{item.stores.map((entry) => <div key={entry.storeName} className="flex items-center justify-between gap-3"><span>{entry.storeName}<span className="ml-1 text-xs text-mute">· {entry.date}</span></span><b className={entry.basePrice === item.stores[0].basePrice ? 'text-brand' : ''}>{eur(entry.basePrice)}</b></div>)}</div>
           <p className="mt-1 text-xs text-mute">Diferència entre el més car i el més econòmic: <b>{eur(item.difference)}</b></p>
+        </li>)}</ul>}
+      </section>
+      <section className="card mb-4"><h2 className="mb-1 font-semibold">Estalvi potencial estimat</h2>
+        <p className="mb-3 text-xs text-mute">Estimació orientativa: compara l'última compra registrada de cada producte amb el preu unitari més baix registrat a qualsevol establiment. Només compta diferències positives i quantitats comparables; no és una garantia d'estalvi futur.</p>
+        <div className="mb-3 rounded-xl bg-surface2 p-3"><p className="text-xs text-mute">Estalvi estimat sobre les últimes quantitats comprades</p><p className="text-2xl font-bold">{eur(totalPotentialSavings)}</p></div>
+        {potentialSavings.length === 0 ? <p className="text-sm text-mute">Encara no hi ha cap diferència positiva calculable. Registra tiquets revisats del mateix producte en dos o més establiments per comparar-los.</p> : <ul className="space-y-3 text-sm">{potentialSavings.map((item) => <li key={item.key} className="flex items-start justify-between gap-3 border-b border-line pb-3 last:border-0 last:pb-0">
+          <div className="min-w-0"><b>{item.name}</b><p className="text-xs text-mute">Última compra: {item.storeName} · alternativa més econòmica: {item.cheapestStore}</p><p className="text-xs text-mute">Quantitat de referència: {item.quantity} {item.unit}</p></div><b className="shrink-0 text-brand">{eur(item.saving)}</b>
         </li>)}</ul>}
       </section>
       <section className="card"><h2 className="mb-1 font-semibold">Historial de preus pagats</h2>
