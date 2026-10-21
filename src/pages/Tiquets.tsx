@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, UNITS, applyPurchaseToInventory, type Purchase, type PurchaseLine } from '../db'
 import { Sheet, Field, Empty, Title, num, uid } from '../ui'
 import { eur, todayISO, formatDate, r2 } from '../talkual'
+import { readTicket } from '../ocr'
 
 export default function Tiquets() {
   const purchases = useLiveQuery(() => db.purchases.orderBy('date').reverse().toArray(), [], [])
@@ -23,7 +24,7 @@ export default function Tiquets() {
         {fileRef('image/*', true)}
         {fileRef('image/*,application/pdf')}
       </div>
-      <p className="mb-4 text-xs text-mute">La lectura automàtica (OCR) encara no està configurada: pots adjuntar el document i introduir-ne les dades manualment per revisar-les.</p>
+      <p className="mb-4 text-xs text-mute">Pots llegir automàticament fotografies i PDFs. El resultat és una proposta: revisa sempre els camps i les línies abans de desar.</p>
       {purchases.length === 0 && <Empty>Encara no hi ha cap tiquet. Registra la primera compra.</Empty>}
       <ul className="space-y-2">{purchases.map((p) => (
         <li key={p.id}><button className="card flex w-full items-center justify-between text-left" onClick={() => setView(p)}>
@@ -44,7 +45,35 @@ function TicketForm({ file, stores, onClose }: { file?: File; stores: { id?: num
   const [discount, setDiscount] = useState('')
   const [lines, setLines] = useState<PurchaseLine[]>([{ id: uid(), name: '', qty: 1, unit: 'ud', amount: 0 }])
   const [dup, setDup] = useState(false)
+  const [ocrState, setOcrState] = useState<'idle' | 'reading' | 'done' | 'error'>('idle')
+  const [ocrProgress, setOcrProgress] = useState(0)
+  const [ocrMessage, setOcrMessage] = useState('')
+  const [ocrConfidence, setOcrConfidence] = useState<number | null>(null)
   const [savedId, setSavedId] = useState<number | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    if (!file) { setOcrState('idle'); setOcrMessage(''); return }
+    setOcrState('reading')
+    setOcrProgress(0)
+    setOcrMessage('Preparant el lector…')
+    setOcrConfidence(null)
+    readTicket(file, (progress) => {
+      if (!cancelled) { setOcrProgress(Math.round(progress * 100)); setOcrMessage(`Llegint el document… ${Math.round(progress * 100)}%`) }
+    }).then((result) => {
+      if (cancelled) return
+      if (result.date) setDate(result.date)
+      if (result.total !== undefined) setTotal(String(result.total))
+      if (result.lines.length) setLines(result.lines.map((line) => ({ id: uid(), name: line.name, qty: 1, unit: 'ud', amount: line.amount })))
+      setOcrConfidence(result.confidence)
+      setOcrState('done')
+      setOcrMessage(result.lines.length ? `Lectura acabada: ${result.lines.length} línies detectades. Revisa-les totes abans de desar.` : 'Text llegit, però no s’han pogut identificar les línies amb prou seguretat. Completa-les manualment.')
+    }).catch((error: unknown) => {
+      if (cancelled) return
+      setOcrState('error')
+      setOcrMessage(error instanceof Error ? error.message : 'No s’ha pogut llegir el document. Pots introduir les dades manualment.')
+    })
+    return () => { cancelled = true }
+  }, [file])
   const sum = r2(lines.reduce((s, l) => s + l.amount, 0))
   const expected = r2(sum - num(discount))
   const diff = total ? r2(num(total) - expected) : 0
@@ -67,6 +96,14 @@ function TicketForm({ file, stores, onClose }: { file?: File; stores: { id?: num
     <Sheet title="Nou tiquet" onClose={onClose}>
       <div className="space-y-3">
         {file && <p className="card !p-2 text-xs">📎 {file.name} (s'adjuntarà al tiquet)</p>}
+        {file && <div className="card !p-3 text-sm">
+          <p className="font-semibold">{ocrState === 'reading' ? 'Lectura automàtica en curs' : ocrState === 'done' ? 'Lectura automàtica completada' : ocrState === 'error' ? 'No s’ha pogut completar la lectura' : 'Preparant lectura'}</p>
+          {ocrState === 'reading' && <div className="my-2 h-2 overflow-hidden rounded bg-line"><div className="h-full bg-brand transition-all" style={{ width: `${ocrProgress}%` }} /></div>}
+          <p className="mt-1 text-mute">{ocrMessage}</p>
+          {ocrConfidence !== null && <p className="mt-1 text-xs text-mute">Confiança mitjana OCR: {Math.round(ocrConfidence)}%. No és una garantia de precisió.</p>}
+          {ocrState === 'done' && <p className="mt-2 text-xs">Les dades detectades són editables. Comprova especialment l’establiment, la data, l’import i les quantitats. La lectura s’executa al dispositiu; el motor OCR es descarrega des d’un CDN públic.</p>}
+          {ocrState === 'error' && <button type="button" className="btn-s mt-2" onClick={() => { setOcrState('idle'); setOcrMessage('Pots continuar introduint les dades manualment.') }}>Continuar manualment</button>}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Establiment"><select value={storeId ?? ''} onChange={(e) => setStoreId(e.target.value ? Number(e.target.value) : undefined)}><option value="">—</option>{stores.filter((s) => !s.archived).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           <Field label="Data"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
