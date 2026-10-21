@@ -51,6 +51,26 @@ export default function Analisi() {
   const monthSpend = sumBy(all.filter((e) => monthKey(e.date) === month), (e) => e.amount)
   const pct = settings.budgetMonthly ? Math.round((monthSpend / settings.budgetMonthly) * 100) : 0
   const tk = talkualStats(cycles)
+  const observations = priceObservations(purchases, stores)
+  const priceComparisons = useMemo(() => {
+    const grouped = new Map<string, typeof observations>()
+    for (const observation of observations) {
+      const key = `${observation.name}|${observation.base}`
+      grouped.set(key, [...(grouped.get(key) ?? []), observation])
+    }
+    return [...grouped.entries()].flatMap(([key, entries]) => {
+      const latestByStore = new Map<string, typeof entries[number]>()
+      for (const entry of entries) {
+        const previous = latestByStore.get(entry.storeName)
+        if (!previous || entry.date >= previous.date) latestByStore.set(entry.storeName, entry)
+      }
+      const storePrices = [...latestByStore.values()].sort((x, y) => x.basePrice - y.basePrice)
+      if (storePrices.length < 2) return []
+      const normalizedName = entries[0].name
+      const displayName = purchases.flatMap((purchase) => purchase.lines).find((line) => line.name.trim().toLowerCase() === normalizedName)?.name ?? normalizedName
+      return [{ key, name: displayName, base: entries[0].base, stores: storePrices, difference: r2(storePrices[storePrices.length - 1].basePrice - storePrices[0].basePrice) }]
+    }).sort((x, y) => y.difference - x.difference)
+  }, [observations, purchases])
   const prices = priceSummary(priceObservations(purchases, stores))
   const nPurch = cur.filter((e) => e.source === 'compra').length
   const tick = { fontSize: 11, fill: 'rgb(var(--mute))' }
@@ -82,6 +102,14 @@ export default function Analisi() {
       </section>
       <section className="card mb-4"><h2 className="mb-2 font-semibold">Talkual</h2>
         <dl className="grid grid-cols-2 gap-y-1 text-sm"><dt className="text-mute">Caixes rebudes</dt><dd className="text-right">{tk.received}</dd><dt className="text-mute">Caixes anul·lades</dt><dd className="text-right">{tk.cancelled}</dd><dt className="text-mute">Despesa total</dt><dd className="text-right">{eur(tk.totalSpend)}</dd><dt className="text-mute">Import base acumulat</dt><dd className="text-right">{eur(tk.baseAccum)}</dd><dt className="text-mute">Productes addicionals</dt><dd className="text-right">{eur(tk.extrasSpend)}</dd><dt className="text-mute">Import mitjà</dt><dd className="text-right">{eur(tk.avgOrder)}</dd></dl></section>
+      <section className="card mb-4"><h2 className="mb-1 font-semibold">Comparativa de preus per establiment</h2>
+        <p className="mb-2 text-xs text-mute">Compara l'últim preu registrat a cada establiment, normalitzat per kg, litre o unitat. Només es mostren productes amb dades de com a mínim dos establiments.</p>
+        {priceComparisons.length === 0 ? <p className="text-sm text-mute">Encara no hi ha productes registrats en dos o més establiments amb la mateixa unitat base.</p> : <ul className="space-y-3 text-sm">{priceComparisons.map((item) => <li key={item.key} className="border-b border-line pb-3 last:border-0 last:pb-0">
+          <div className="mb-1 flex items-start justify-between gap-2"><b>{item.name}</b><span className="shrink-0 text-xs text-mute">{item.base}</span></div>
+          <div className="space-y-1">{item.stores.map((entry) => <div key={entry.storeName} className="flex items-center justify-between gap-3"><span>{entry.storeName}<span className="ml-1 text-xs text-mute">· {entry.date}</span></span><b className={entry.basePrice === item.stores[0].basePrice ? 'text-brand' : ''}>{eur(entry.basePrice)}</b></div>)}</div>
+          <p className="mt-1 text-xs text-mute">Diferència entre el més car i el més econòmic: <b>{eur(item.difference)}</b></p>
+        </li>)}</ul>}
+      </section>
       <section className="card"><h2 className="mb-1 font-semibold">Historial de preus pagats</h2>
         <p className="mb-2 text-xs text-mute">Només a partir dels tiquets registrats. Els productes de la caixa variable de Talkual no s'hi inclouen. Es comparen només formats amb la mateixa unitat base.</p>
         {prices.length === 0 ? <p className="text-sm text-mute">Cal registrar tiquets amb preus per veure'n l'evolució.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-mute"><tr><th className="py-1">Producte</th><th>Últim</th><th>Mín</th><th>Màx</th><th>Mitjà</th><th>Var.</th></tr></thead><tbody>{prices.map((p) => <tr key={p.key} className="border-t border-line"><td className="py-1.5">{p.name}<div className="text-[10px] text-mute">{p.base} · {p.lastStore} · {p.n} obs.</div></td><td>{eur(p.last)}</td><td>{eur(p.min)}</td><td>{eur(p.max)}</td><td>{eur(p.avg)}</td><td className={p.pct > 0 ? 'text-bad' : p.pct < 0 ? 'text-brand' : ''}>{p.n > 1 ? `${p.pct > 0 ? '+' : ''}${p.pct}%` : '—'}</td></tr>)}</tbody></table></div>}</section>
