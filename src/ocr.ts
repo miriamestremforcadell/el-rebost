@@ -7,7 +7,7 @@ export interface TicketOcrResult {
 }
 
 type TesseractApi = {
-  recognize: (image: string | Blob | HTMLCanvasElement, langs: string, options?: Record<string, unknown>) => Promise<{ data: { text: string; confidence: number } }>
+  recognize: (image: string | HTMLCanvasElement, langs: string, options?: Record<string, unknown>) => Promise<{ data: { text: string; confidence: number } }>
 }
 type PdfApi = {
   GlobalWorkerOptions: { workerSrc: string }
