@@ -55,7 +55,7 @@ export default function App() {
         {tab === 'rebost' && <Rebost />}
         {tab === 'tiquets' && <Tiquets />}
         {tab === 'analisi' && <Analisi />}
-        {tab === 'config' && <Configuracio />}
+        {tab === 'config' && <Configuracio onProducts={() => go('rebost')} />}
       </main>
       <nav className="nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur" aria-label="Navegació principal">
         <ul className="mx-auto grid max-w-[720px] grid-cols-6">
