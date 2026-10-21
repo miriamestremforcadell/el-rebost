@@ -17,18 +17,19 @@ export default function Compra() {
   const [adding, setAdding] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [group, setGroup] = useState<'categoria' | 'establiment'>('categoria')
-
-  const est = items.reduce((s, i) => s + (i.estPrice ?? 0) * i.qty, 0)
+  const [storeFilter, setStoreFilter] = useState<number | 'all' | 'none'>('all')
+  const visibleItems = items.filter((i) => storeFilter === 'all' || (storeFilter === 'none' ? !i.storeId : i.storeId === storeFilter))
+  const est = visibleItems.filter((i) => !i.bought).reduce((s, i) => s + (i.estPrice ?? 0) * i.qty, 0)
   const groups = new Map<string, ListItem[]>()
-  for (const i of items) {
-    const k = group === 'categoria' ? (cats.find((c) => c.id === i.categoryId)?.name ?? 'Sense categoria') : (stores.find((s) => s.id === i.storeId)?.name ?? 'Qualsevol establiment')
+  for (const i of visibleItems) {
+    const k = group === 'categoria' ? (cats.find((c) => c.id === i.categoryId)?.name ?? 'Sense categoria') : (stores.find((s) => s.id === i.storeId)?.name ?? 'Sense establiment')
     groups.set(k, [...(groups.get(k) ?? []), i])
   }
   return (
     <>
       <Title right={<button className="btn-p" onClick={() => setAdding(true)} disabled={!cur}>＋ Producte</button>}>Compra</Title>
       <div className="mb-3 flex gap-2 overflow-x-auto">
-        {lists.map((l) => <button key={l.id} onClick={() => setSel(l.id)} className={cur?.id === l.id ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'}>{l.name}</button>)}
+        {lists.map((l) => <button key={l.id} onClick={() => { setSel(l.id); setStoreFilter('all') }} className={cur?.id === l.id ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'}>{l.name}</button>)}
       </div>
       <form className="mb-4 flex gap-2" onSubmit={async (e) => { e.preventDefault(); if (!newName.trim()) return; const id = (await db.lists.add({ name: newName.trim(), createdAt: new Date().toISOString() })) as number; setSel(id); setNewName('') }}>
         <input placeholder={lists.length ? 'Nova llista…' : 'Crea la primera llista (ex.: Compra setmanal)'} value={newName} onChange={(e) => setNewName(e.target.value)} />
@@ -38,10 +39,15 @@ export default function Compra() {
       {cur && (
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span className="text-mute">Cost estimat: <b className="text-ink">{eur(est)}</b> <span className="text-xs">(estimació, no garantit)</span></span>
+            <span className="text-mute">Cost estimat pendent: <b className="text-ink">{eur(est)}</b> <span className="text-xs">(preus orientatius)</span></span>
             <select className="!w-auto" value={group} onChange={(e) => setGroup(e.target.value as 'categoria' | 'establiment')} aria-label="Agrupa per"><option value="categoria">Per categoria</option><option value="establiment">Per establiment</option></select>
           </div>
-          {items.length === 0 && <Empty>La llista és buida.</Empty>}
+          <div className="mb-3 flex gap-2 overflow-x-auto pb-1" aria-label="Filtra per establiment">
+            <button className={storeFilter === 'all' ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'} onClick={() => setStoreFilter('all')}>Tots ({items.filter((i) => !i.bought).length})</button>
+            {stores.map((store) => <button key={store.id} className={storeFilter === store.id ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'} onClick={() => setStoreFilter(store.id!)}>{store.name} ({items.filter((i) => i.storeId === store.id && !i.bought).length})</button>)}
+            <button className={storeFilter === 'none' ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'} onClick={() => setStoreFilter('none')}>Sense establiment ({items.filter((i) => !i.storeId && !i.bought).length})</button>
+          </div>
+          {visibleItems.length === 0 && <Empty>{storeFilter === 'all' ? 'La llista és buida.' : 'No hi ha productes pendents en aquest establiment.'}</Empty>}
           {[...groups.entries()].map(([g, xs]) => (
             <section key={g} className="mb-4">
               <h2 className="mb-1 text-sm font-semibold text-mute">{g}</h2>
@@ -50,7 +56,8 @@ export default function Compra() {
                   <input type="checkbox" checked={!!i.bought} onChange={(e) => db.listItems.update(i.id!, { bought: e.target.checked })} aria-label={`Marca ${i.name} com a comprat`} />
                   <div className={`min-w-0 flex-1 ${i.bought ? 'line-through opacity-50' : ''}`}>
                     <div className="truncate font-medium">{i.name}</div>
-                    <div className="text-xs text-mute">{i.qty} {i.unit}{i.estPrice !== undefined ? ` · ${eur(i.estPrice)}/ud (est. ${i.estSource ?? 'manual'})` : ''}{i.note ? ` · ${i.note}` : ''}</div>
+                    <div className="text-xs text-mute">{i.qty} {i.unit}{i.note ? ` · ${i.note}` : ''}</div>
+                    {!i.bought && <div className="mt-1 flex items-center gap-2 text-xs text-mute"><span>Preu/unitat €</span><input className="!w-24 !min-h-[32px] !py-1" inputMode="decimal" aria-label={`Preu estimat de ${i.name}`} value={i.estPrice ?? ''} placeholder="Sense preu" onChange={(e) => { const value = e.target.value.trim(); const price = value === '' ? undefined : num(value); if (price === undefined || (Number.isFinite(price) && price >= 0)) db.listItems.update(i.id!, { estPrice: price, estSource: price === undefined ? undefined : 'manual' }) }} />{i.estPrice !== undefined && <span>{eur(i.estPrice * i.qty)} total</span>}</div>}
                   </div>
                   <button className="btn-g !px-2" onClick={() => db.listItems.delete(i.id!)} aria-label={`Elimina ${i.name}`}>🗑</button>
                 </li>))}
@@ -64,14 +71,14 @@ export default function Compra() {
           </div>
         </>
       )}
-      {adding && cur && <AddItem listId={cur.id!} cats={cats} stores={stores} purchases={purchases} onClose={() => setAdding(false)} />}
+      {adding && cur && <AddItem listId={cur.id!} cats={cats} stores={stores} purchases={purchases} defaultStoreId={typeof storeFilter === 'number' ? storeFilter : undefined} onClose={() => setAdding(false)} />}
       {confirming && cur && <ConfirmBuy items={items.filter((i) => i.bought)} onClose={() => setConfirming(false)} />}
     </>
   )
 }
 
-function AddItem({ listId, cats, stores, purchases, onClose }: { listId: number; cats: { id?: number; name: string }[]; stores: { id?: number; name: string }[]; purchases: Purchase[]; onClose: () => void }) {
-  const [f, setF] = useState<Partial<ListItem>>({ qty: 1, unit: 'ud' })
+function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: { listId: number; cats: { id?: number; name: string }[]; stores: { id?: number; name: string }[]; purchases: Purchase[]; defaultStoreId?: number; onClose: () => void }) {
+  const [f, setF] = useState<Partial<ListItem>>({ qty: 1, unit: 'ud', storeId: defaultStoreId })
   const [warn, setWarn] = useState<string | null>(null)
   const set = (k: keyof ListItem, v: unknown) => setF((x) => ({ ...x, [k]: v }))
   const suggestions = useLiveQuery(() => db.products.toArray(), [], [])
@@ -81,11 +88,20 @@ function AddItem({ listId, cats, stores, purchases, onClose }: { listId: number;
     const have = await findProduct(f.name)
     if (have && have.qty > 0 && !force) { setWarn(`Ja tens ${have.qty} ${have.unit} de «${have.name}» a casa. Vols afegir-ne més igualment?`); return }
     let item = { ...f, listId, name: f.name.trim() } as ListItem
+    const stores_ = await db.stores.toArray()
+    const reviewed = purchases.filter((p) => p.status === 'Revisat' && p.lines.some((line) => line.name.trim().toLowerCase() === item.name.toLowerCase() && line.unit === item.unit && p.storeId))
+    if (item.storeId === undefined && !defaultStoreId && reviewed.length) {
+      const counts = new Map<number, { count: number; latest: string }>()
+      for (const p of reviewed) { const sid = p.storeId!; const prev = counts.get(sid) ?? { count: 0, latest: '' }; counts.set(sid, { count: prev.count + 1, latest: p.date > prev.latest ? p.date : prev.latest }) }
+      item.storeId = [...counts.entries()].sort((a, b) => b[1].count - a[1].count || b[1].latest.localeCompare(a[1].latest))[0]?.[0]
+    }
     if (item.estPrice === undefined) {
-      const stores_ = await db.stores.toArray()
       const obs = priceObservations(purchases, stores_).filter((o) => o.name === item.name.toLowerCase())
-      const last = obs[obs.length - 1]
-      if (last) { item = { ...item, estPrice: last.unitPrice, estSource: item.storeId && stores_.find((s) => s.id === item.storeId)?.name !== last.storeName ? 'altre establiment' : 'última compra' } }
+      const storeName = stores_.find((s) => s.id === item.storeId)?.name
+      const matchingStore = storeName ? obs.filter((o) => o.storeName === storeName) : []
+      const available = matchingStore.length ? matchingStore : obs
+      const last = available[available.length - 1]
+      if (last) { item = { ...item, estPrice: last.unitPrice, estSource: storeName && last.storeName === storeName ? 'última compra' : 'altre establiment' } }
     } else item.estSource = 'manual'
     await db.listItems.add(item)
     onClose()
