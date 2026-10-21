@@ -38,7 +38,7 @@ Les dades no es publiquen mai: viuen a l'iPhone. Fes còpies a Configuració →
 **Pendent (no implementat)**
 - Connexió amb Supabase: autenticació, sincronització, cua de canvis i resolució de conflictes.
 - OCR de tiquets (cal servei extern + funció de servidor; ara es revisa tot a mà).
-- Notificacions en segon pla (iOS exigeix PWA instal·lada + servei push).
+- Notificacions push en segon pla: fora de l'abast actual; es mantenen els avisos dins de l'aplicació.
 - Anàlisi per categoria i per cost de productes individuals; recomanacions; pressupostos per categoria amb avisos (es poden configurar, però encara no s'avalua l'avís per categoria).
 - Duplicar la caixa anterior com a plantilla; icona per categories més enllà d'emojis; proves a un iPhone real.
 - Primer renderitzat: les xifres poden mostrar-se com a 0 uns mil·lisegons abans de carregar les dades.
