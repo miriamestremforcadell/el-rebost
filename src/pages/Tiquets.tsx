@@ -106,7 +106,7 @@ function TicketForm({ file, stores, onClose }: { file?: File; stores: { id?: num
           {ocrState === 'done' && <p className="mt-2 text-xs">Les dades detectades són editables. Comprova especialment l’establiment, la data, l’import i les quantitats. La lectura s’executa al dispositiu; el motor OCR es descarrega des d’un CDN públic.</p>}
           {ocrState === 'done' && ocrText && <details className="mt-2"><summary className="cursor-pointer text-xs font-medium">Mostra el text llegit per l’OCR</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-page p-2 text-xs">{ocrText}</pre></details>}
           {ocrState === 'error' && <button type="button" className="btn-s mt-2" onClick={() => { setOcrState('idle'); setOcrMessage('Pots continuar introduint les dades manualment.') }}>Continuar manualment</button>}
-        </div>
+        </div>}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Establiment"><select value={storeId ?? ''} onChange={(e) => setStoreId(e.target.value ? Number(e.target.value) : undefined)}><option value="">—</option>{stores.filter((s) => !s.archived).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           <Field label="Data"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
