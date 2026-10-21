@@ -7,7 +7,7 @@ export interface TicketOcrResult {
 }
 
 type TesseractApi = {
-  recognize: (image: string | HTMLCanvasElement, langs: string, options?: Record<string, unknown>) => Promise<{ data: { text: string; confidence: number } }>
+  recognize: (image: string | Blob | HTMLCanvasElement, langs: string, options?: Record<string, unknown>) => Promise<{ data: { text: string; confidence: number } }>
 }
 type PdfApi = {
   GlobalWorkerOptions: { workerSrc: string }
@@ -71,7 +71,7 @@ function parseText(text: string, confidence: number): TicketOcrResult {
   return { text, confidence, date, total, lines: items }
 }
 
-async function filePages(file: File): Promise<(string | HTMLCanvasElement)[]> {
+async function filePages(file: File): Promise<(Blob | HTMLCanvasElement)[]> {
   if (file.type.startsWith('image/')) return [file]
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
     throw new Error('Format no compatible. Tria una fotografia o un PDF.')
