@@ -44,6 +44,7 @@ function TicketForm({ file, stores, onClose }: { file?: File; stores: { id?: num
   const [total, setTotal] = useState('')
   const [discount, setDiscount] = useState('')
   const [lines, setLines] = useState<PurchaseLine[]>([{ id: uid(), name: '', qty: 1, unit: 'ud', amount: 0 }])
+  const [unitPriceDrafts, setUnitPriceDrafts] = useState<Record<string, string>>({})
   const [dup, setDup] = useState(false)
   const [ocrState, setOcrState] = useState<'idle' | 'reading' | 'done' | 'error'>('idle')
   const [ocrProgress, setOcrProgress] = useState(0)
@@ -120,7 +121,7 @@ function TicketForm({ file, stores, onClose }: { file?: File; stores: { id?: num
             <div className="grid grid-cols-4 gap-2">
               <input inputMode="decimal" aria-label="Quantitat" placeholder="Qt." value={l.qty || ''} onChange={(e) => setLine(l.id, { qty: num(e.target.value) })} />
               <select aria-label="Unitat" value={l.unit} onChange={(e) => setLine(l.id, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
-              <input inputMode="decimal" aria-label="Preu unitari" placeholder="€/u" value={l.unitPrice ?? ''} onChange={(e) => setLine(l.id, { unitPrice: e.target.value ? num(e.target.value) : undefined })} />
+              <input inputMode="decimal" aria-label="Preu unitari" placeholder="€/u" value={unitPriceDrafts[l.id] ?? (l.unitPrice ?? '')} onChange={(e) => setUnitPriceDrafts((drafts) => ({ ...drafts, [l.id]: e.target.value }))} onBlur={() => { const raw = unitPriceDrafts[l.id]; if (raw === undefined) return; setLine(l.id, { unitPrice: raw.trim() ? num(raw) : undefined }); setUnitPriceDrafts((drafts) => { const next = { ...drafts }; delete next[l.id]; return next }) }} />
               <input inputMode="decimal" aria-label="Import" placeholder="Import" value={l.amount || ''} onChange={(e) => setLine(l.id, { amount: num(e.target.value) })} />
             </div>
           </div>
