@@ -75,6 +75,7 @@ function ProductForm({ initial, locs, cats, onClose }: { initial: Partial<Produc
   const set = (k: keyof Product, v: unknown) => setF((x) => ({ ...x, [k]: v }))
   const save = async () => {
     if (!f.name?.trim()) return
+    if (f.price !== undefined && (!Number.isFinite(f.price) || f.price < 0)) { alert('El preu ha de ser 0 € o superior.'); return }
     const data = { ...f, name: f.name.trim(), qty: f.qty ?? 0, unit: f.unit ?? 'ud' } as Product
     if (f.id) {
       const old = await db.products.get(f.id)

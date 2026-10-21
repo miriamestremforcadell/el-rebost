@@ -220,31 +220,94 @@ export async function applyPurchaseToInventory(purchaseId: number, lineIds: stri
   })
 }
 
-const BACKUP_TABLES = ['settings', 'stores', 'categories', 'locations', 'products', 'movements', 'lists', 'listItems', 'purchases', 'cycles', 'alerts'] as const
+const BACKUP_TABLES = ['settings', 'stores', 'categories', 'locations', 'products', 'movements', 'lists', 'listItems', 'purchases', 'docs', 'cycles', 'alerts'] as const
 
-/** Exporta totes les dades (sense fotos ni documents adjunts, que són binaris). */
+type BackupBlob = { __elRebostBlob: true; type: string; base64: string }
+
+async function blobToBackup(blob: Blob): Promise<BackupBlob> {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return { __elRebostBlob: true, type: blob.type, base64: btoa(binary) }
+}
+
+function backupToBlob(value: unknown): Blob | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const candidate = value as Partial<BackupBlob>
+  if (candidate.__elRebostBlob !== true || typeof candidate.base64 !== 'string' || typeof candidate.type !== 'string') return undefined
+  const binary = atob(candidate.base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: candidate.type })
+}
+
+/** Exporta totes les taules, incloent-hi fotos i documents adjunts codificats en Base64. */
 export async function exportAll() {
-  const out: Record<string, unknown> = { app: 'el-rebost', version: 1 }
+  const out: Record<string, unknown> = { app: 'el-rebost', version: 2 }
   for (const t of BACKUP_TABLES) {
-    let rows = await (db[t] as Table).toArray()
-    if (t === 'products') rows = rows.map(({ photo: _p, ...r }) => r)
-    if (t === 'purchases') rows = rows.map(({ docId: _d, ...r }) => r)
-    out[t] = rows
+    const rows = await (db[t] as Table).toArray() as Record<string, unknown>[]
+    if (t === 'products') {
+      out[t] = await Promise.all(rows.map(async (row) => ({
+        ...row,
+        ...(row.photo instanceof Blob ? { photo: await blobToBackup(row.photo) } : {}),
+      })))
+    } else if (t === 'docs') {
+      out[t] = await Promise.all(rows.map(async (row) => ({
+        ...row,
+        ...(row.blob instanceof Blob ? { blob: await blobToBackup(row.blob) } : {}),
+      })))
+    } else {
+      out[t] = rows
+    }
   }
   out.exportedAt = new Date().toISOString()
   await setSetting('lastExport', out.exportedAt)
   return out
 }
 
-/** Restaura una còpia: valida el fitxer i REEMPLAÇA les dades actuals en una sola transacció. */
-export async function importAll(raw: unknown): Promise<{ products: number; purchases: number; cycles: number }> {
-  const d = raw as Record<string, unknown[]>
-  if (!d || d.app !== ('el-rebost' as unknown) || !Array.isArray(d.cycles) || !Array.isArray(d.products)) throw new Error('Aquest fitxer no és una còpia d\'El Rebost.')
+/** Valida la còpia abans de tocar la base de dades i restaura totes les taules en una transacció. */
+export async function importAll(raw: unknown): Promise<{ products: number; purchases: number; cycles: number; docs: number }> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error("Aquest fitxer no és una còpia d'El Rebost.")
+  const d = raw as Record<string, unknown>
+  if (d.app !== 'el-rebost' || (d.version !== 1 && d.version !== 2) || !Array.isArray(d.cycles) || !Array.isArray(d.products)) {
+    throw new Error("Aquest fitxer no és una còpia compatible d'El Rebost.")
+  }
+  for (const t of BACKUP_TABLES) {
+    if (d[t] !== undefined && !Array.isArray(d[t])) throw new Error(`La taula «${t}» de la còpia no és vàlida. No s'ha modificat cap dada.`)
+  }
+  const normalized: Record<string, unknown[]> = {}
+  for (const t of BACKUP_TABLES) {
+    const rows = (Array.isArray(d[t]) ? d[t] : []) as Record<string, unknown>[]
+    if (t === 'products') {
+      normalized[t] = rows.map((row) => ({ ...row, ...(backupToBlob(row.photo) ? { photo: backupToBlob(row.photo) } : {}) }))
+    } else if (t === 'docs') {
+      normalized[t] = rows.map((row) => {
+        const blob = backupToBlob(row.blob)
+        if (!blob) throw new Error('La còpia conté un document adjunt invàlid. No s\'ha modificat cap dada.')
+        return { ...row, blob }
+      })
+    } else {
+      normalized[t] = rows
+    }
+  }
   const tables = BACKUP_TABLES.map((t) => db[t] as Table)
   await db.transaction('rw', tables, async () => {
-    for (const t of BACKUP_TABLES) { await (db[t] as Table).clear(); const rows = d[t]; if (Array.isArray(rows) && rows.length) await (db[t] as Table).bulkPut(rows) }
+    for (const t of BACKUP_TABLES) {
+      const table = db[t] as Table
+      await table.clear()
+      const rows = normalized[t]
+      if (rows.length) await table.bulkPut(rows)
+    }
   })
-  return { products: d.products.length, purchases: (d.purchases ?? []).length, cycles: d.cycles.length }
+  return {
+    products: normalized.products.length,
+    purchases: normalized.purchases.length,
+    cycles: normalized.cycles.length,
+    docs: normalized.docs.length,
+  }
 }
 
 export { addDays }

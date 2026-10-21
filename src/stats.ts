@@ -28,7 +28,7 @@ export function priceObservations(purchases: Purchase[], stores: Store[]): Obs[]
   for (const p of purchases.filter((x) => x.status === 'Revisat')) {
     for (const l of p.lines) {
       const up = l.unitPrice ?? (l.qty ? l.amount / l.qty : undefined)
-      if (!up) continue
+      if (up === undefined || !Number.isFinite(up) || up < 0) continue
       const b = toBase(up, l.unit)
       out.push({ name: norm(l.name), date: p.date, storeName: stores.find((s) => s.id === p.storeId)?.name ?? '—', unitPrice: up, base: b.base, basePrice: b.price })
     }
