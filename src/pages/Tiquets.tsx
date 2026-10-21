@@ -49,6 +49,7 @@ function TicketForm({ file, stores, onClose }: { file?: File; stores: { id?: num
   const [ocrProgress, setOcrProgress] = useState(0)
   const [ocrMessage, setOcrMessage] = useState('')
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null)
+  const [ocrText, setOcrText] = useState('')
   const [savedId, setSavedId] = useState<number | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -61,6 +62,7 @@ function TicketForm({ file, stores, onClose }: { file?: File; stores: { id?: num
       if (!cancelled) { setOcrProgress(Math.round(progress * 100)); setOcrMessage(`Llegint el document… ${Math.round(progress * 100)}%`) }
     }).then((result) => {
       if (cancelled) return
+      setOcrText(result.text)
       if (result.date) setDate(result.date)
       if (result.total !== undefined) setTotal(String(result.total))
       if (result.lines.length) setLines(result.lines.map((line) => ({ id: uid(), name: line.name, qty: 1, unit: 'ud', amount: line.amount })))
@@ -102,6 +104,7 @@ function TicketForm({ file, stores, onClose }: { file?: File; stores: { id?: num
           <p className="mt-1 text-mute">{ocrMessage}</p>
           {ocrConfidence !== null && <p className="mt-1 text-xs text-mute">Confiança mitjana OCR: {Math.round(ocrConfidence)}%. No és una garantia de precisió.</p>}
           {ocrState === 'done' && <p className="mt-2 text-xs">Les dades detectades són editables. Comprova especialment l’establiment, la data, l’import i les quantitats. La lectura s’executa al dispositiu; el motor OCR es descarrega des d’un CDN públic.</p>}
+          {ocrState === 'done' && ocrText && <details className="mt-2"><summary className="cursor-pointer text-xs font-medium">Mostra el text llegit per l’OCR</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-page p-2 text-xs">{ocrText}</pre></details>}
           {ocrState === 'error' && <button type="button" className="btn-s mt-2" onClick={() => { setOcrState('idle'); setOcrMessage('Pots continuar introduint les dades manualment.') }}>Continuar manualment</button>}
         </div>
         <div className="grid grid-cols-2 gap-3">
