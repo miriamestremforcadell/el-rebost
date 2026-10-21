@@ -4,20 +4,21 @@ import { db, getSettings, setSetting, DEFAULT_SETTINGS, STORE_TYPES, UNITS, expo
 import { Sheet, Field, Title, num } from '../ui'
 import Talkual from './Talkual'
 
-type Sec = null | 'preferencies' | 'establiments' | 'talkual' | 'categories' | 'pressupostos' | 'inventari' | 'dades'
+type Sec = null | 'productes' | 'preferencies' | 'establiments' | 'talkual' | 'categories' | 'pressupostos' | 'inventari' | 'dades'
 const SECS: [Sec, string, string][] = [
+  ['productes', '🛒', 'Productes i reposició'],
   ['preferencies', '🎨', 'Preferències'], ['establiments', '🏪', 'Proveïdors i establiments'], ['talkual', '📦', 'Talkual'],
   ['categories', '🏷', 'Categories'], ['pressupostos', '💶', 'Pressupostos'], ['inventari', '🫙', 'Inventari'], ['dades', '🔒', 'Dades i privacitat'],
 ]
 
-export default function Configuracio() {
+export default function Configuracio({ onProducts }: { onProducts: () => void }) {
   const [sec, setSec] = useState<Sec>(null)
   if (sec === 'talkual') return <Talkual back={() => setSec(null)} />
   if (sec) return <><Title right={<button className="btn-g" onClick={() => setSec(null)}>← Enrere</button>}>{SECS.find((s) => s[0] === sec)![2]}</Title><Section sec={sec} /></>
   return (
     <>
       <Title>Configuració</Title>
-      <ul className="space-y-2">{SECS.map(([id, ic, l]) => <li key={id}><button className="card flex w-full items-center gap-3 text-left" onClick={() => setSec(id)}><span className="text-xl">{ic}</span><span className="flex-1 font-medium">{l}</span><span className="text-mute">›</span></button></li>)}</ul>
+      <ul className="space-y-2">{SECS.map(([id, ic, l]) => <li key={id}><button className="card flex w-full items-center gap-3 text-left" onClick={() => id === 'productes' ? onProducts() : setSec(id)}><span className="text-xl">{ic}</span><span className="flex-1 font-medium">{l}</span><span className="text-mute">›</span></button></li>)}</ul>
       <p className="mt-6 text-center text-xs text-mute">El Rebost · versió 0.1</p>
     </>
   )
