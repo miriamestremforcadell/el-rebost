@@ -31,6 +31,22 @@ export default function Rebost() {
           <button key={k} onClick={() => setView(k)} className={view === k ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'}>{l}</button>
         ))}
       </div>
+      {view === 'reposar' && products.some(low) && <button className="btn-p mb-4 w-full" onClick={async () => {
+        let list = (await db.lists.toArray())[0]
+        if (!list) {
+          const id = (await db.lists.add({ name: 'La compra', createdAt: new Date().toISOString() })) as number
+          list = { id, name: 'La compra', createdAt: new Date().toISOString() }
+        }
+        const existing = await db.listItems.where('listId').equals(list.id!).toArray()
+        const lowProducts = products.filter(low)
+        let added = 0
+        for (const p of lowProducts) {
+          if (existing.some((item) => item.name.trim().toLocaleLowerCase('ca') === p.name.trim().toLocaleLowerCase('ca') && item.unit === p.unit && !item.bought)) continue
+          await db.listItems.add({ listId: list.id!, name: p.name, qty: Math.max(1, (p.min ?? 1) - p.qty), unit: p.unit, categoryId: p.categoryId })
+          added++
+        }
+        alert(added ? `S'han afegit ${added} productes a «${list.name}».` : 'Tots els productes per reposar ja són a la llista de compra.')
+      }}>＋ Afegeix els productes per reposar a la compra</button>}
       {products.length === 0 && <Empty>El rebost és buit. Afegeix els primers productes o registra una caixa de Talkual rebuda.</Empty>}
       {groups.map((g) => {
         const items = view === 'ubicacio' ? shown.filter((p) => p.locationId === g.id) : shown
