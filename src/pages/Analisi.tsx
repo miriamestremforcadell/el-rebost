@@ -103,6 +103,7 @@ export default function Analisi() {
 
   const totalPotentialSavings = r2(potentialSavings.reduce((total, item) => total + item.saving, 0))
   const prices = priceSummary(priceObservations(purchases, stores))
+  const priceIncreases = useMemo(() => prices.filter((item) => item.n > 1 && item.pct > 0).sort((x, y) => y.pct - x.pct).slice(0, 10), [prices])
   const nPurch = cur.filter((e) => e.source === 'compra').length
   const tick = { fontSize: 11, fill: 'rgb(var(--mute))' }
 
@@ -157,6 +158,7 @@ export default function Analisi() {
           <div className="min-w-0"><b>{item.name}</b><p className="text-xs text-mute">Última compra: {item.storeName} · alternativa més econòmica: {item.cheapestStore}</p><p className="text-xs text-mute">Quantitat de referència: {item.quantity} {item.unit}</p></div><b className="shrink-0 text-brand">{eur(item.saving)}</b>
         </li>)}</ul>}
       </section>
+      <section className="card mb-4"><h2 className="mb-1 font-semibold">Productes que més han pujat de preu</h2><p className="mb-3 text-xs text-mute">Els 10 productes amb més pujada percentual entre el primer i l’últim preu registrat. Només es mostren productes amb almenys dos registres; les comparacions són orientatives.</p>{priceIncreases.length === 0 ? <p className="text-sm text-mute">Encara no hi ha pujades calculables. Registra dues o més compres del mateix producte.</p> : <ol className="space-y-3">{priceIncreases.map((p, i) => <li key={p.key} className="flex items-start justify-between gap-3 border-b border-line pb-3 last:border-0"><div><b>{i + 1}. {p.name}</b><p className="text-xs text-mute">{p.base} · últim establiment: {p.lastStore}</p><p className="text-xs text-mute">Actual: {eur(p.last)} · mínim: {eur(p.min)} · màxim: {eur(p.max)} · {p.n} registres</p></div><b className="shrink-0 text-bad">+{p.pct}%</b></li>)}</ol>}</section>
       <section className="card"><h2 className="mb-1 font-semibold">Historial de preus pagats</h2>
         <p className="mb-2 text-xs text-mute">Només a partir dels tiquets registrats. Els productes de la caixa variable de Talkual no s'hi inclouen. Es comparen només formats amb la mateixa unitat base.</p>
         {prices.length === 0 ? <p className="text-sm text-mute">Cal registrar tiquets amb preus per veure'n l'evolució.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-mute"><tr><th className="py-1">Producte</th><th>Últim</th><th>Mín</th><th>Màx</th><th>Mitjà</th><th>Var.</th></tr></thead><tbody>{prices.map((p) => <tr key={p.key} className="border-t border-line"><td className="py-1.5">{p.name}<div className="text-[10px] text-mute">{p.base} · {p.lastStore} · {p.n} obs.</div></td><td>{eur(p.last)}</td><td>{eur(p.min)}</td><td>{eur(p.max)}</td><td>{eur(p.avg)}</td><td className={p.pct > 0 ? 'text-bad' : p.pct < 0 ? 'text-brand' : ''}>{p.n > 1 ? `${p.pct > 0 ? '+' : ''}${p.pct}%` : '—'}</td></tr>)}</tbody></table></div>}</section>
