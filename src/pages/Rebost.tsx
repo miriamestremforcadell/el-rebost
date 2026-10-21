@@ -118,7 +118,21 @@ function ProductForm({ initial, locs, cats, onClose }: { initial: Partial<Produc
 function Detail({ p, onClose, onEdit }: { p: Product; onClose: () => void; onEdit: (p: Product) => void }) {
   const moves = useLiveQuery(() => db.movements.where('productId').equals(p.id!).reverse().sortBy('ts'), [p.id], [])
   const lists = useLiveQuery(() => db.lists.toArray(), [], [])
+  const purchases = useLiveQuery(() => db.purchases.toArray(), [], [])
+  const stores = useLiveQuery(() => db.stores.toArray(), [], [])
   const [msg, setMsg] = useState('')
+  const normalize = (value: string) => value.trim().toLocaleLowerCase('ca')
+  const priceHistory = purchases
+    .flatMap((purchase) => purchase.lines
+      .filter((line) => normalize(line.name) === normalize(p.name) && line.unit === p.unit && line.qty > 0)
+      .map((line) => ({
+        date: purchase.date,
+        store: stores.find((store) => store.id === purchase.storeId)?.name ?? 'Sense establiment',
+        price: line.unitPrice !== undefined ? line.unitPrice : line.amount / line.qty,
+        qty: line.qty,
+      })))
+    .filter((entry) => Number.isFinite(entry.price) && entry.price >= 0)
+    .sort((a, b) => b.date.localeCompare(a.date))
   const addToList = async () => {
     let l = lists[0]
     if (!l) { const id = (await db.lists.add({ name: 'La compra', createdAt: new Date().toISOString() })) as number; l = { id, name: 'La compra', createdAt: '' } }
@@ -135,6 +149,18 @@ function Detail({ p, onClose, onEdit }: { p: Product; onClose: () => void; onEdi
         <button className="btn-d" onClick={async () => { if (confirm('Segur que vols eliminar el producte?')) { await db.products.delete(p.id!); await db.movements.where('productId').equals(p.id!).delete(); onClose() } }}>Elimina</button>
       </div>
       {msg && <p className="mb-2 text-sm text-brand">{msg}</p>}
+      <h3 className="mb-1 text-sm font-semibold">Historial de preus</h3>
+      {priceHistory.length === 0 ? <p className="mb-3 text-sm text-mute">Encara no hi ha compres amb aquest producte i unitat. Els preus apareixeran quan registris tiquets amb el mateix nom i unitat.</p> : (
+        <>
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-page p-2"><div className="text-xs text-mute">Preu més baix</div><b>{Math.min(...priceHistory.map((entry) => entry.price)).toLocaleString('ca-ES', { style: 'currency', currency: 'EUR' })}</b></div>
+            <div className="rounded-lg bg-page p-2"><div className="text-xs text-mute">Preu més alt</div><b>{Math.max(...priceHistory.map((entry) => entry.price)).toLocaleString('ca-ES', { style: 'currency', currency: 'EUR' })}</b></div>
+          </div>
+          <ul className="mb-4 divide-y divide-line text-sm">
+            {priceHistory.map((entry, index) => <li key={`${entry.date}-${entry.store}-${index}`} className="flex items-center justify-between gap-3 py-2"><span><b>{entry.store}</b><span className="block text-xs text-mute">{formatDate(entry.date, false)} · {entry.qty} {p.unit}</span></span><b>{entry.price.toLocaleString('ca-ES', { style: 'currency', currency: 'EUR' })}</b></li>)}
+          </ul>
+        </>
+      )}
       <h3 className="mb-1 text-sm font-semibold">Historial de moviments</h3>
       {moves.length === 0 ? <p className="text-sm text-mute">Encara no hi ha moviments.</p> : (
         <ul className="divide-y divide-line text-sm">{moves.map((m) => <li key={m.id} className="flex justify-between py-1.5"><span>{m.kind}{m.note ? ` · ${m.note}` : ''}<span className="ml-2 text-xs text-mute">{new Date(m.ts).toLocaleDateString('ca-ES')}</span></span><b className={m.delta < 0 ? 'text-bad' : 'text-brand'}>{m.delta > 0 ? '+' : ''}{m.delta}</b></li>)}</ul>
