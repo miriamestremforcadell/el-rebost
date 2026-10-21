@@ -50,7 +50,7 @@ export default function Compra() {
                   <input type="checkbox" checked={!!i.bought} onChange={(e) => db.listItems.update(i.id!, { bought: e.target.checked })} aria-label={`Marca ${i.name} com a comprat`} />
                   <div className={`min-w-0 flex-1 ${i.bought ? 'line-through opacity-50' : ''}`}>
                     <div className="truncate font-medium">{i.name}</div>
-                    <div className="text-xs text-mute">{i.qty} {i.unit}{i.estPrice ? ` · ${eur(i.estPrice)}/ud (est. ${i.estSource})` : ''}{i.note ? ` · ${i.note}` : ''}</div>
+                    <div className="text-xs text-mute">{i.qty} {i.unit}{i.estPrice !== undefined ? ` · ${eur(i.estPrice)}/ud (est. ${i.estSource ?? 'manual'})` : ''}{i.note ? ` · ${i.note}` : ''}</div>
                   </div>
                   <button className="btn-g !px-2" onClick={() => db.listItems.delete(i.id!)} aria-label={`Elimina ${i.name}`}>🗑</button>
                 </li>))}
