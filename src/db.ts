@@ -265,6 +265,8 @@ export async function exportAll() {
   }
   out.exportedAt = new Date().toISOString()
   await setSetting('lastExport', out.exportedAt)
+  // Inclou també la data actualitzada dins del fitxer que s'acaba de generar.
+  out.settings = await db.settings.toArray()
   return out
 }
 
