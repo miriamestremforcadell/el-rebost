@@ -86,6 +86,21 @@ export default function Analisi() {
     const saving = r2(Math.max(0, paidBasePrice - item.stores[0].basePrice) * baseQty)
     return [{ key: item.key, name: item.name, base: item.base, storeName: stores.find((store) => store.id === latest.purchase.storeId)?.name ?? 'Establiment desconegut', cheapestStore: item.stores[0].storeName, quantity: line.qty, unit: line.unit, saving }]
   }).filter((item) => item.saving > 0).sort((x, y) => y.saving - x.saving), [priceComparisons, purchases, stores])
+
+  const storeBuyingGuide = useMemo(() => {
+    const grouped = new Map<string, { storeName: string; products: { key: string; name: string; base: string; price: number; difference: number }[]; totalDifference: number }>()
+    for (const item of priceComparisons) {
+      const cheapest = item.stores[0]
+      const entry = { key: item.key, name: item.name, base: item.base, price: cheapest.basePrice, difference: item.difference }
+      const current = grouped.get(cheapest.storeName) ?? { storeName: cheapest.storeName, products: [], totalDifference: 0 }
+      current.products.push(entry)
+      current.totalDifference = r2(current.totalDifference + item.difference)
+      grouped.set(cheapest.storeName, current)
+    }
+    return [...grouped.values()].map((store) => ({ ...store, products: store.products.sort((x, y) => x.name.localeCompare(y.name)) }))
+      .sort((x, y) => y.products.length - x.products.length || y.totalDifference - x.totalDifference)
+  }, [priceComparisons])
+
   const totalPotentialSavings = r2(potentialSavings.reduce((total, item) => total + item.saving, 0))
   const prices = priceSummary(priceObservations(purchases, stores))
   const nPurch = cur.filter((e) => e.source === 'compra').length
@@ -125,6 +140,15 @@ export default function Analisi() {
           <div className="space-y-1">{item.stores.map((entry) => <div key={entry.storeName} className="flex items-center justify-between gap-3"><span>{entry.storeName}<span className="ml-1 text-xs text-mute">· {entry.date}</span></span><b className={entry.basePrice === item.stores[0].basePrice ? 'text-brand' : ''}>{eur(entry.basePrice)}</b></div>)}</div>
           <p className="mt-1 text-xs text-mute">Diferència entre el més car i el més econòmic: <b>{eur(item.difference)}</b></p>
         </li>)}</ul>}
+      </section>
+
+      <section className="card mb-4"><h2 className="mb-1 font-semibold">Guia de compra per establiment</h2>
+        <p className="mb-3 text-xs text-mute">Agrupa els productes segons l'establiment amb el preu unitari més baix registrat. La recomanació es basa en els últims preus disponibles i pot variar amb les ofertes o els formats.</p>
+        {storeBuyingGuide.length === 0 ? <p className="text-sm text-mute">Encara no hi ha prou preus comparables. Registra productes en dos o més establiments per generar la guia.</p> : <ul className="space-y-3">{storeBuyingGuide.map((store) => <li key={store.storeName} className="rounded-xl bg-surface2 p-3">
+          <div className="mb-2 flex items-start justify-between gap-3"><div><b>{store.storeName}</b><p className="text-xs text-mute">{store.products.length} {store.products.length === 1 ? 'producte més econòmic' : 'productes més econòmics'}</p></div><span className="shrink-0 text-xs text-mute">Fins a {eur(store.totalDifference)} de diferència*</span></div>
+          <ul className="space-y-1.5 text-sm">{store.products.map((product) => <li key={product.key} className="flex items-center justify-between gap-3"><span className="min-w-0">{product.name}<span className="ml-1 text-xs text-mute">({product.base})</span></span><span className="shrink-0 text-right"><b>{eur(product.price)}</b><span className="block text-xs text-mute">estalvi comparatiu {eur(product.difference)}</span></span></li>)}</ul>
+        </li>)}</ul>}
+        {storeBuyingGuide.length > 0 && <p className="mt-2 text-[11px] text-mute">*Suma de les diferències de preu unitari registrades per als productes del grup; no representa necessàriament l'estalvi d'una compra real.</p>}
       </section>
       <section className="card mb-4"><h2 className="mb-1 font-semibold">Estalvi potencial estimat</h2>
         <p className="mb-3 text-xs text-mute">Estimació orientativa: compara l'última compra registrada de cada producte amb el preu unitari més baix registrat a qualsevol establiment. Només compta diferències positives i quantitats comparables; no és una garantia d'estalvi futur.</p>
