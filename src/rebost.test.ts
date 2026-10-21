@@ -127,3 +127,44 @@ describe('còpia de seguretat', () => {
     await expect(importAll({ foo: 1 })).rejects.toThrow()
   })
 })
+
+
+describe('preus i còpia completa', () => {
+  beforeEach(async () => { useTestDb('extra' + Math.random()); await seed() })
+
+  it('manté el preu zero com a valor vàlid i el mostra a les observacions', async () => {
+    const { priceObservations } = await import('./stats')
+    const purchase = {
+      date: '2026-10-21', total: 0, discount: 0, lines: [
+        { id: 'free', name: 'Mostra gratuïta', qty: 1, unit: 'ud', unitPrice: 0, amount: 0 },
+      ], status: 'Revisat' as const, source: 'manual' as const, createdAt: '',
+    }
+    const obs = priceObservations([purchase], [])
+    expect(obs).toHaveLength(1)
+    expect(obs[0].unitPrice).toBe(0)
+    expect(obs[0].basePrice).toBe(0)
+  })
+
+  it('inclou i restaura els documents adjunts i les fotos', async () => {
+    const { exportAll, importAll } = await import('./db')
+    await db.products.add({ name: 'Foto', qty: 1, unit: 'ud', photo: new Blob(['foto'], { type: 'image/jpeg' }) })
+    await db.docs.add({ name: 'tiquet.pdf', type: 'application/pdf', blob: new Blob(['pdf-test'], { type: 'application/pdf' }), createdAt: '2026-10-21T00:00:00.000Z' })
+    const backup = JSON.parse(JSON.stringify(await exportAll()))
+    await db.products.clear()
+    await db.docs.clear()
+    const restored = await importAll(backup)
+    expect(restored.docs).toBe(1)
+    expect((await db.docs.toArray())[0].blob).toBeInstanceOf(Blob)
+    expect(await (await db.docs.toArray())[0].blob.text()).toBe('pdf-test')
+    expect((await db.products.toArray())[0].photo).toBeInstanceOf(Blob)
+    expect(await (await db.products.toArray())[0].photo!.text()).toBe('foto')
+  })
+
+  it('rebutja taules malformades abans de modificar dades', async () => {
+    const { importAll } = await import('./db')
+    await db.products.add({ name: 'Conserva', qty: 2, unit: 'ud' })
+    const invalid = { app: 'el-rebost', version: 2, products: [], cycles: [], docs: 'no és una taula' }
+    await expect(importAll(invalid)).rejects.toThrow()
+    expect((await db.products.toArray()).map((p) => p.name)).toEqual(['Conserva'])
+  })
+})
