@@ -26,10 +26,12 @@ export default function Receptes() {
   const [mode, setMode] = useState<'avui'|'setmana'>('avui')
   const [selected, setSelected] = useState<Recipe | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [recipeFilter, setRecipeFilter] = useState<'totes'|'preparables'|'caducitat'|'rapides'>('totes')
   const today = todayISO()
   const insights = inventoryInsights(products, movements, today)
   const expiringIds = useMemo(() => new Set(insights.expiry.map((x) => x.product.id).filter((id): id is number => id !== undefined)), [insights.expiry])
   const matches = useMemo(() => recipes.map((r) => matchRecipe(r, products, expiringIds)).sort((a,b) => b.score-a.score || a.recipe.minutes-b.recipe.minutes), [recipes, products, expiringIds])
+  const filteredMatches = useMemo(() => matches.filter((m) => recipeFilter==='preparables' ? m.matches.length>0 && m.matches.every((x)=>x.ingredient.qty>0 && x.missing===0) : recipeFilter==='caducitat' ? m.expiringCount>0 : recipeFilter==='rapides' ? m.recipe.minutes<=30 : true), [matches, recipeFilter])
   const storedPlan = (planRow?.value && typeof planRow.value === 'object' ? planRow.value : {}) as Record<string, string | { dinar?: string; sopar?: string }>
   // Compatibilitat: les receptes planificades anteriorment per dia passen a ocupar el dinar.
   const plan: Plan = Object.fromEntries(Object.entries(storedPlan).map(([day, value]) => [day, typeof value === 'string' ? { dinar:value, sopar:'' } : { dinar:value.dinar ?? '', sopar:value.sopar ?? '' }]))
@@ -68,8 +70,11 @@ export default function Receptes() {
       <button className={mode==='setmana'?'btn-p':'btn-s'} onClick={()=>setMode('setmana')}>Planifica la setmana</button>
     </div>
     {mode==='avui' ? <>
-      <div className="card mb-3 text-sm"><b>Primer, el que caduca abans</b><p className="mt-1 text-mute">Ordenem les receptes segons els ingredients disponibles i donem prioritat als productes que tens a punt de caducar. Comprova sempre que els aliments siguin aptes per consumir.</p></div>
-      {products.filter((p)=>p.qty>0).length===0 && customRecipes.length===0 ? <Empty>Afegeix productes al rebost per rebre propostes de receptes amb els ingredients que tens, o importa una recepta.</Empty> : <div className="space-y-2">{matches.map((m)=> <RecipeCard key={m.recipe.id} match={m} onOpen={()=>setSelected(m.recipe)} />)}</div>}
+      <div className="card mb-3 text-sm"><b>Primer, el que caduca abans</b><p className="mt-1 text-mute">Les propostes es basen en el que tens al rebost: prioritzem les receptes que aprofiten productes a punt de caducar i les que pots preparar amb menys compres. Comprova sempre que els aliments siguin aptes per consumir.</p></div>
+      <div className="mb-3 flex flex-wrap gap-2" aria-label="Filtra les receptes">
+        {([{id:'totes',label:'Totes'},{id:'preparables',label:'Puc preparar'},{id:'caducitat',label:'Per consumir aviat'},{id:'rapides',label:'Fins a 30 min'}] as const).map((filter)=><button key={filter.id} className={recipeFilter===filter.id?'btn-p':'btn-s'} aria-pressed={recipeFilter===filter.id} onClick={()=>setRecipeFilter(filter.id)}>{filter.label}{filter.id==='totes'?' ('+matches.length+')':filter.id==='preparables'?' ('+matches.filter((m)=>m.matches.length>0&&m.matches.every((x)=>x.ingredient.qty>0&&x.missing===0)).length+')':filter.id==='caducitat'?' ('+matches.filter((m)=>m.expiringCount>0).length+')':' ('+matches.filter((m)=>m.recipe.minutes<=30).length+')'}</button>)}
+      </div>
+      {products.filter((p)=>p.qty>0).length===0 && customRecipes.length===0 ? <Empty>Afegeix productes al rebost per rebre propostes de receptes amb els ingredients que tens, o importa una recepta.</Empty> : filteredMatches.length===0 ? <Empty>No hi ha receptes que coincideixin amb aquest filtre. Prova’n un altre o importa una recepta.</Empty> : <div className="space-y-2">{filteredMatches.map((m)=> <RecipeCard key={m.recipe.id} match={m} onOpen={()=>setSelected(m.recipe)} />)}</div>}
     </> : <>
       <div className="card mb-3 text-sm"><b>Menú setmanal</b><p className="mt-1 text-mute">Planifica dinars i sopars. El menú es desa en aquest dispositiu i pots modificar-lo quan vulguis.</p></div>
       <div className="space-y-2">{week.map((day)=> <div key={day} className="card !p-3"><div className="mb-3 font-medium capitalize">{dateLabel(day)}</div>{(['dinar','sopar'] as const).map((meal)=>{ const recipeId=plan[day]?.[meal]??''; const match=matches.find((m)=>m.recipe.id===recipeId); return <div key={meal} className={meal==='sopar'?'mt-3 border-t border-line pt-3':''}><Field label={meal==='dinar'?'☀️ Dinar':'🌙 Sopar'}><select className="!min-h-[40px]" value={recipeId} onChange={(e)=>void savePlan(day,meal,e.target.value)}><option value="">— Sense planificar —</option>{recipes.map((r)=><option key={r.id} value={r.id}>{r.emoji} {r.name}</option>)}</select></Field>{match && <p className="mt-1 text-xs text-mute">{match.availableCount} ingredients complets · {match.missingCount} pendents</p>}</div>})}</div>)}</div>
