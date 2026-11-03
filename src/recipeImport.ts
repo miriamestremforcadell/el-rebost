@@ -18,7 +18,7 @@ function parseIngredient(line: string): RecipeIngredient | null {
   let qty = match[1] === '½' ? 0.5 : match[1] === '¼' ? 0.25 : match[1] === '¾' ? 0.75 : match[1].includes('/') ? Number(match[1].split('/')[0]) / Number(match[1].split('/')[1]) : Number(match[1].replace(',', '.'))
   if (!Number.isFinite(qty)) qty = 0
   const rawUnit = (match[2] || '—').toLowerCase().replace(/\.$/, '')
-  const units: Record<string,string> = { kilogram:'kg', kilograms:'kg', kilo:'kg', kilos:'kg', gram:'g', grams:'g', gr:'g', milliliter:'ml', milliliters:'ml', millilitre:'ml', millilitres:'ml', litre:'l', litres:'l', liter:'l', liters:'l', cl:'ml', cup:'tassa', cups:'tassa', tbsp:'cullerada', tablespoon:'cullerada', tablespoons:'cullerada', tsp:'culleradeta', teaspoon:'culleradeta', teaspoons:'culleradeta', cullerada:'cullerada', cullerades:'cullerada', culleradeta:'culleradeta', culleradetes:'culleradeta', tassa:'tassa', tasses:'tassa', unit:'ud', units:'ud', uds:'ud', ud:'ud', dientes:'gra', diente:'gra', grains:'gra', grain:'gra', pinch:'pessic', pizcas:'pessic' }
+  const units: Record<string,string> = { kilogram:'kg', kilograms:'kg', kilo:'kg', kilos:'kg', gram:'g', grams:'g', gr:'g', milliliter:'ml', milliliters:'ml', millilitre:'ml', millilitres:'ml', litre:'l', litres:'l', liter:'l', liters:'l', cl:'ml', cup:'tassa', cups:'tassa', tbsp:'cullerada', tablespoon:'cullerada', tablespoons:'cullerada', tsp:'culleradeta', teaspoon:'culleradeta', teaspoons:'culleradeta', cullerada:'cullerada', cullerades:'cullerada', culleradeta:'culleradeta', culleradetes:'culleradeta', cucharada:'cullerada', cucharadas:'cullerada', cucharadita:'culleradeta', cucharaditas:'culleradeta', tassa:'tassa', tasses:'tassa', taza:'tassa', tazas:'tassa', unit:'ud', units:'ud', unidades:'ud', uds:'ud', ud:'ud', dientes:'gra', diente:'gra', grains:'gra', grain:'gra', pinch:'pessic', pizca:'pessic', pizcas:'pessic' }
   return { name: match[3].trim().replace(/^of\s+/i, ''), qty, unit: units[rawUnit] || rawUnit }
 }
 
@@ -26,7 +26,7 @@ export function recipeFromOcrText(text: string, confidence = 0): Recipe {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const ingredientStart = lines.findIndex((line) => isHeading(line, INGREDIENT_HEAD))
   const stepStart = lines.findIndex((line) => isHeading(line, STEP_HEAD))
-  const firstUseful = lines.find((line) => !TITLE_SKIP.test(line) && clean(line).length > 2)
+  const firstUseful = lines.find((line) => !TITLE_SKIP.test(line) && !/^\\[Captura \\d+\\]$/i.test(line.trim()) && clean(line).length > 2)
   const name = (firstUseful ? clean(firstUseful) : '').slice(0, 90) || 'Recepta importada'
   let ingredientLines: string[] = []
   let stepLines: string[] = []

@@ -70,8 +70,8 @@ export function matchRecipe(recipe: Recipe, products: { id?: number; name: strin
     const missing = converted === undefined ? ingredient.qty : Math.max(0, ingredient.qty - converted);
     return { ingredient, available, missing, productName: product?.name, expiring: !!product?.id && expiringIds.has(product.id) };
   });
-  const availableCount = matches.filter((m) => m.missing === 0).length;
-  const missingCount = matches.filter((m) => m.missing > 0).length;
+  const availableCount = matches.filter((m) => m.ingredient.qty > 0 && m.missing === 0).length;
+  const missingCount = matches.filter((m) => m.ingredient.qty > 0 && m.missing > 0).length;
   const expiringCount = matches.filter((m) => m.expiring).length;
   return { recipe, matches, availableCount, missingCount, expiringCount, score: availableCount * 3 - missingCount + expiringCount * 2 };
 }
