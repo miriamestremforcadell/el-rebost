@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, addProduct, adjustStock, UNITS, getSettings, DEFAULT_SETTINGS, type Product } from '../db'
+import { db, addProduct, adjustStock, UNITS, getSettings, DEFAULT_SETTINGS, type Product, type Movement } from '../db'
+import { inventoryInsights } from '../inventory'
 import { Sheet, Field, Empty, Title, ProductVisual, num } from '../ui'
 import { todayISO, parseISO, formatDate } from '../talkual'
 
@@ -8,47 +9,57 @@ export const daysTo = (iso?: string) => iso ? Math.round((parseISO(iso).getTime(
 
 export default function Rebost() {
   const products = useLiveQuery(() => db.products.toArray(), [], [] as Product[])
+  const movements = useLiveQuery(() => db.movements.toArray(), [], [] as Movement[])
   const locs = useLiveQuery(() => db.locations.toArray(), [], [])
   const cats = useLiveQuery(() => db.categories.filter((c) => !c.archived).toArray(), [], [])
   const settings = useLiveQuery(getSettings, [], DEFAULT_SETTINGS)
   const [q, setQ] = useState('')
   const [edit, setEdit] = useState<Partial<Product> | null>(null)
   const [detail, setDetail] = useState<Product | null>(null)
-  const [view, setView] = useState<'ubicacio' | 'reposar' | 'caduca'>('ubicacio')
+  const [view, setView] = useState<'ubicacio' | 'reposar' | 'caduca' | 'historial'>('ubicacio')
 
   const filt = products.filter((p) => (p.name + (p.brand ?? '')).toLowerCase().includes(q.toLowerCase()))
-  const low = (p: Product) => p.min !== undefined && p.min > 0 && p.qty <= p.min
-  const soon = (p: Product) => { const d = daysTo(p.expiry); return d !== undefined && d <= settings.expiryDays && p.qty > 0 }
+  const insights = inventoryInsights(products, movements, todayISO(), settings.expiryDays)
+  const expiryIds = new Set(insights.expiry.map((x) => x.product.id))
+  const reorderIds = new Set(insights.replenishment.map((x) => x.product.id))
+  const consumptionHistory = insights.consumption.filter((x) => x.consumed > 0)
+  const low = (p: Product) => reorderIds.has(p.id)
+  const soon = (p: Product) => expiryIds.has(p.id)
   const shown = view === 'reposar' ? filt.filter(low) : view === 'caduca' ? filt.filter(soon).sort((a, b) => (a.expiry! > b.expiry! ? 1 : -1)) : filt
-  const groups = view === 'ubicacio' ? [...locs.map((l) => ({ id: l.id, name: l.name })), { id: undefined, name: 'Sense ubicació' }] : [{ id: -1, name: view === 'reposar' ? 'Pendents de reposició' : 'Caduquen aviat' }]
+  const groups = view === 'ubicacio' ? [...locs.map((l) => ({ id: l.id, name: l.name })), { id: undefined, name: 'Sense ubicació' }] : [{ id: -1, name: view === 'reposar' ? 'Reposició suggerida' : 'Caduquen aviat' }]
 
   return (
     <>
       <Title right={<button className="btn-p" onClick={() => setEdit({ unit: 'ud', qty: 1, boughtAt: todayISO() })}>＋ Afegeix</button>}>El meu rebost</Title>
       <input placeholder="Cerca un producte…" value={q} onChange={(e) => setQ(e.target.value)} className="mb-3" aria-label="Cerca" />
       <div className="mb-4 flex gap-2 overflow-x-auto">
-        {([['ubicacio', 'Per ubicació'], ['reposar', `A reposar (${products.filter(low).length})`], ['caduca', `Caduquen (${products.filter(soon).length})`]] as const).map(([k, l]) => (
+        {([['ubicacio', 'Per ubicació'], ['reposar', `A reposar (${insights.replenishment.length})`], ['caduca', `Caducitat (${insights.expiry.length})`], ['historial', 'Historial de consum']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} className={view === k ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'}>{l}</button>
         ))}
       </div>
-      {view === 'reposar' && products.some(low) && <button className="btn-p mb-4 w-full" onClick={async () => {
+      {view === 'reposar' && insights.replenishment.length > 0 && <button className="btn-p mb-4 w-full" onClick={async () => {
         let list = (await db.lists.toArray())[0]
         if (!list) {
           const id = (await db.lists.add({ name: 'La compra', createdAt: new Date().toISOString() })) as number
           list = { id, name: 'La compra', createdAt: new Date().toISOString() }
         }
         const existing = await db.listItems.where('listId').equals(list.id!).toArray()
-        const lowProducts = products.filter(low)
+        const activeKeys = new Set(existing.filter((item) => !item.bought).map((item) => `${item.name.trim().toLocaleLowerCase('ca')}|${item.unit}`))
         let added = 0
-        for (const p of lowProducts) {
-          if (existing.some((item) => item.name.trim().toLocaleLowerCase('ca') === p.name.trim().toLocaleLowerCase('ca') && item.unit === p.unit && !item.bought)) continue
-          await db.listItems.add({ listId: list.id!, name: p.name, qty: Math.max(1, (p.min ?? 1) - p.qty), unit: p.unit, categoryId: p.categoryId, photo: p.photo, emoji: p.emoji })
+        for (const suggestion of insights.replenishment) {
+          const p = suggestion.product
+          const key = `${p.name.trim().toLocaleLowerCase('ca')}|${p.unit}`
+          if (activeKeys.has(key)) continue
+          await db.listItems.add({ listId: list.id!, name: p.name, qty: suggestion.suggestedQty, unit: p.unit, categoryId: p.categoryId, photo: p.photo, emoji: p.emoji, estPrice: p.price })
+          activeKeys.add(key)
           added++
         }
         alert(added ? `S'han afegit ${added} productes a «${list.name}».` : 'Tots els productes per reposar ja són a la llista de compra.')
       }}>＋ Afegeix els productes per reposar a la compra</button>}
+      {view === 'caduca' && <div className="mb-4 rounded-xl border border-line bg-page p-3"><div className="font-semibold">Prioritat de consum</div><p className="mt-1 text-sm text-mute">Els productes caducats apareixen primer, seguits dels que caduquen abans. Revisa també les indicacions de conservació de cada envàs.</p><div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="chip-b">{insights.expiry.filter((x) => x.days < 0).length} caducats</span><span className="chip-w">{insights.expiry.filter((x) => x.days >= 0).length} pròxims a caducar</span></div></div>}
+      {view === 'historial' && <section className="space-y-3"><div className="rounded-xl bg-page p-3"><h2 className="font-semibold">Consum dels últims 30 dies</h2><p className="mt-1 text-sm text-mute">Càlcul basat en els moviments registrats amb el botó de consum. Els ajustos manuals no es compten com a consum.</p></div>{consumptionHistory.length === 0 ? <Empty>Encara no hi ha prou moviments de consum o compres per crear un historial. Registra els consums amb el botó − del rebost.</Empty> : <ul className="space-y-2">{consumptionHistory.slice(0, 12).map((x) => <li key={x.product.id} className="card flex items-center gap-3 !p-3"><ProductVisual photo={x.product.photo} emoji={x.product.emoji} fallback={cats.find((c) => c.id === x.product.categoryId)?.icon} /><div className="min-w-0 flex-1"><div className="truncate font-medium">{x.product.name}</div><div className="text-xs text-mute">Consum: {x.consumed} {x.product.unit} / 30 dies · Estoc: {x.product.qty} {x.product.unit}</div><div className="text-xs text-mute">{x.averagePurchaseInterval !== undefined ? `Compra aproximadament cada ${Math.round(x.averagePurchaseInterval)} dies` : x.purchaseCount ? '1 compra registrada' : 'Sense compra registrada'}{x.lastPurchase ? ` · Última: ${formatDate(x.lastPurchase, false)}` : ''}</div></div><div className="text-right text-sm font-semibold">{x.daysOfStock !== undefined ? `${Math.floor(x.daysOfStock)} dies` : '—'}<div className="text-[10px] font-normal text-mute">d’estoc</div></div></li>)}</ul>}</section>}
       {products.length === 0 && <Empty>El rebost és buit. Afegeix els primers productes o registra una caixa de Talkual rebuda.</Empty>}
-      {groups.map((g) => {
+      {view !== 'historial' && groups.map((g) => {
         const items = view === 'ubicacio' ? shown.filter((p) => p.locationId === g.id) : shown
         if (!items.length) return null
         return (
@@ -63,9 +74,9 @@ export default function Rebost() {
                     <button className="min-w-0 flex-1 text-left" onClick={() => setDetail(p)}>
                       <div className="truncate font-medium">{p.name}{p.brand && <span className="text-mute"> · {p.brand}</span>}</div>
                       <div className="mt-0.5 flex flex-wrap gap-1 text-xs text-mute">
-                        {low(p) && <span className="chip-w">A reposar</span>}
+                        {low(p) && <span className="chip-w">Reposició suggerida</span>}
                         {d !== undefined && d <= settings.expiryDays && p.qty > 0 && <span className={d < 0 ? 'chip-b' : 'chip-w'}>{d < 0 ? 'Caducat' : d === 0 ? 'Caduca avui' : `Caduca en ${d} d`}</span>}
-                        {p.expiry && d !== undefined && d > settings.expiryDays && <span>Fins {formatDate(p.expiry, false)}</span>}
+                        {p.expiry && d !== undefined && d > settings.expiryDays && <span>Fins {formatDate(p.expiry, false)}</span>}{view === 'reposar' && <span className="block">{insights.replenishment.find((x) => x.product.id === p.id)?.reason}</span>}
                       </div>
                     </button>
                     <div className="flex items-center gap-1">

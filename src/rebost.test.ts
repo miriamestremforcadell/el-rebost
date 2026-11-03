@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { nextOpenCycle, pendingReception, newCycle, cycleTotal, cycleSpend, cancelCycle, plannedDeliveries, sundayBefore, talkualStats, dayName, chargeDifference } from './talkual'
 import { useTestDb, seed, db, applyReception, adjustStock, applyPurchaseToInventory, saveCycle } from './db'
+import { inventoryInsights } from './inventory'
 
 describe('calendari Talkual', () => {
   it('la referència és dimarts i el pagament el diumenge anterior', () => {
@@ -181,5 +182,52 @@ describe('preus i còpia completa', () => {
     const invalid = { app: 'el-rebost', version: 2, products: [], cycles: [], docs: 'no és una taula' }
     await expect(importAll(invalid)).rejects.toThrow()
     expect((await db.products.toArray()).map((p) => p.name)).toEqual(['Conserva'])
+  })
+})
+
+
+describe('control intel·ligent del rebost', () => {
+  const today = '2026-11-03'
+  it('prioritza productes caducats i pròxims a caducar i ignora estoc zero', () => {
+    const products = [
+      { id: 1, name: 'Iogurt', qty: 2, unit: 'ud', expiry: '2026-11-02' },
+      { id: 2, name: 'Llet', qty: 1, unit: 'l', expiry: '2026-11-05' },
+      { id: 3, name: 'Formatge', qty: 0, unit: 'ud', expiry: '2026-11-04' },
+      { id: 4, name: 'Arròs', qty: 1, unit: 'kg', expiry: '2026-11-20' },
+    ]
+    const result = inventoryInsights(products, [], today, 5)
+    expect(result.expiry.map((x) => [x.product.name, x.days])).toEqual([['Iogurt', -1], ['Llet', 2]])
+  })
+  it('calcula consum, ritme, freqüència de compra i reposició suggerida sense afegir res automàticament', () => {
+    const products = [
+      { id: 1, name: 'Cafè', qty: 1, unit: 'paquet', min: 2 },
+      { id: 2, name: 'Arròs', qty: 5, unit: 'kg' },
+    ]
+    const movements = [
+      { id: 1, productId: 1, ts: '2026-10-10T10:00:00.000Z', delta: 1, kind: 'compra' as const },
+      { id: 2, productId: 1, ts: '2026-10-24T10:00:00.000Z', delta: 1, kind: 'compra' as const },
+      { id: 3, productId: 1, ts: '2026-11-02T10:00:00.000Z', delta: -1, kind: 'consum' as const },
+      { id: 4, productId: 2, ts: '2026-10-30T10:00:00.000Z', delta: -3, kind: 'consum' as const },
+      { id: 5, productId: 2, ts: '2026-10-30T10:01:00.000Z', delta: -100, kind: 'correcció' as const },
+    ]
+    const result = inventoryInsights(products, movements, today, 5)
+    const coffee = result.consumption.find((x) => x.product.id === 1)!
+    expect(coffee.consumed).toBe(1)
+    expect(coffee.purchaseCount).toBe(2)
+    expect(coffee.averagePurchaseInterval).toBe(14)
+    expect(result.replenishment.map((x) => x.product.name)).toContain('Cafè')
+    expect(result.replenishment.find((x) => x.product.name === 'Cafè')?.suggestedQty).toBeGreaterThan(0)
+    expect(result.consumption.find((x) => x.product.id === 2)?.consumed).toBe(3)
+    expect(result.replenishment.some((x) => x.product.name === 'Arròs')).toBe(false)
+  })
+  it('suggereix reposició per ritme de consum encara que no hi hagi mínim definit', () => {
+    const products = [{ id: 7, name: 'Llet', qty: 1, unit: 'l' }]
+    const movements = Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1, productId: 7, ts: `2026-10-${String(20 + i).padStart(2, '0')}T10:00:00.000Z`,
+      delta: -1, kind: 'consum' as const,
+    }))
+    const result = inventoryInsights(products, movements, today, 5)
+    expect(result.replenishment[0]?.product.name).toBe('Llet')
+    expect(result.replenishment[0]?.reason).toContain('Estoc aproximat')
   })
 })
