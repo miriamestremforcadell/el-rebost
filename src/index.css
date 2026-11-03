@@ -30,3 +30,6 @@ label.f { @apply block text-xs font-medium text-mute mb-1; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @media (prefers-reduced-motion: reduce) { .page { animation: none } }
 .nav { padding-bottom: env(safe-area-inset-bottom); }
+
+.shopping-mode { overscroll-behavior: contain; }
+.shopping-mode button { touch-action: manipulation; }
