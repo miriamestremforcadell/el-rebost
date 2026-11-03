@@ -3,7 +3,8 @@ export interface TicketOcrResult {
   confidence: number
   date?: string
   total?: number
-  lines: { name: string; amount: number }[]
+  discount: number
+  lines: { name: string; qty: number; unitPrice?: number; amount: number }[]
 }
 
 type TesseractApi = {
@@ -32,9 +33,9 @@ function loadScript(src: string): Promise<void> {
   return promise
 }
 
-function parseText(text: string, confidence: number): TicketOcrResult {
-  const lines = text.split(/\r?\n/).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean)
-  const dateMatch = text.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/)
+export function parseTicketText(text: string, confidence = 100): TicketOcrResult {
+  const lines = text.split(/\\r?\\n/).map((s) => s.replace(/\\s+/g, ' ').trim()).filter(Boolean)
+  const dateMatch = text.match(/\\b(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4})\\b/)
   let date: string | undefined
   if (dateMatch) {
     const year = dateMatch[3].length === 2 ? `20${dateMatch[3]}` : dateMatch[3]
@@ -45,32 +46,66 @@ function parseText(text: string, confidence: number): TicketOcrResult {
   }
 
   const money = (s: string) => {
-    const normalized = s.replace(/\s/g, '').replace(/\.(?=\d{3}(?:[,€]|$))/g, '').replace(',', '.').replace(/[€]/g, '')
+    const normalized = s.replace(/\\s/g, '').replace(/\\.(?=\\d{3}(?:[,€]|$))/g, '').replace(',', '.').replace(/[€]/g, '')
     const n = Number(normalized)
-    return Number.isFinite(n) && n >= 0 && n < 100000 ? Math.round(n * 100) / 100 : undefined
+    return Number.isFinite(n) && Math.abs(n) < 100000 ? Math.round(n * 100) / 100 : undefined
   }
   let total: number | undefined
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (/\b(total|import|a pagar|total eur|total €|amount due|balance due)\b/i.test(lines[i])) {
-      const matches = [...lines[i].matchAll(/(\d{1,5}(?:[.,]\d{2})?)\s*€?/g)]
+    if (/\\b(total a pagar|total pagar|total|import|amount due|balance due)\\b/i.test(lines[i])) {
+      const matches = [...lines[i].matchAll(/-?\\d{1,5}(?:[.,]\\d{2})/g)]
       if (matches.length) {
-        const candidate = money(matches[matches.length - 1][1])
-        if (candidate !== undefined) { total = candidate; break }
+        const candidate = money(matches[matches.length - 1][0])
+        if (candidate !== undefined && candidate >= 0) { total = candidate; break }
       }
     }
   }
-  const items: { name: string; amount: number }[] = []
-  for (const line of lines) {
-    if (/\b(total|subtotal|iva|vat|efectivo|tarjeta|cambio|descuento|gracias|cliente|fecha|ticket|tiquet|cajero|terminal|base imponible|a pagar)\b/i.test(line)) continue
-    const m = line.match(/^(.{2,48}?)\s+(\d{1,5}[,.]\d{2})\s*€?$/)
-    if (!m) continue
-    const name = m[1].replace(/[|*_]/g, '').trim()
-    const amount = money(m[2])
-    if (name.length >= 2 && amount !== undefined && !/^\d+$/.test(name) && items.length < 80) items.push({ name, amount })
-  }
-  return { text, confidence, date, total, lines: items }
-}
 
+  // Prioritza el total de descomptes del tiquet per evitar comptar dues vegades
+  // les línies individuals d'oferta que també apareixen impreses.
+  let discount: number | undefined
+  const discountTotal = [...lines].reverse().find((line) => /total\\s+(?:dtes|descomptes?)\\b/i.test(line))
+  if (discountTotal) {
+    const matches = [...discountTotal.matchAll(/-?\\d{1,5}(?:[.,]\\d{2})/g)]
+    if (matches.length) discount = Math.abs(money(matches[matches.length - 1][0]) ?? 0)
+  }
+  if (discount === undefined) {
+    const offerDiscounts = lines.filter((line) => /descompte|oferta|\\b2a\\s*[- ]?\\s*50%/i.test(line))
+      .map((line) => [...line.matchAll(/-\\s*\\d{1,5}[.,]\\d{2}|\\d{1,5}[.,]\\d{2}\\s*-?/g)].pop()?.[0])
+      .filter((value): value is string => Boolean(value))
+      .map((value) => Math.abs(money(value.replace(/\\s/g, '').replace(/-$/, '')) ?? 0))
+    if (offerDiscounts.length) discount = Math.round(offerDiscounts.reduce((sum, value) => sum + value, 0) * 100) / 100
+  }
+
+  const items: { name: string; qty: number; unitPrice?: number; amount: number }[] = []
+  for (const line of lines) {
+    if (/\\b(total|subtotal|iva|vat|efectivo|tarjeta|cambio|descuento|descomptes?|dtes|gracias|cliente|fecha|ticket|tiquet|cajero|terminal|base imponible|a pagar|\\% descompte)\\b/i.test(line)) continue
+    // Els tiquets poden imprimir: quantitat + preu unitari + import de línia
+    // + estalvi T.Club. Aquest últim no es resta del total pagat.
+    const quantityMatch = line.match(/^(\\d{1,3})\\s+(.+?)\\s+((?:\\d{1,5}[,.]\\d{2}\\s*){1,3})$/)
+    if (quantityMatch) {
+      const values = [...quantityMatch[3].matchAll(/\\d{1,5}[,.]\\d{2}/g)].map((m) => money(m[0])).filter((n): n is number => n !== undefined)
+      if (values.length >= 2) {
+        const qty = Number(quantityMatch[1])
+        const name = quantityMatch[2].replace(/[|*_]/g, '').trim()
+        if (qty > 0 && name.length >= 2 && values[1] > 0 && items.length < 80) {
+          items.push({ name, qty, unitPrice: values[0], amount: values[1] })
+          continue
+        }
+      }
+    }
+    // Sense quantitat explícita, el primer import és el preu de la línia;
+    // una segona xifra final acostuma a ser l'estalvi de la targeta de fidelització.
+    const single = line.match(/^(.{2,48}?)\\s+(\\d{1,5}[,.]\\d{2})(?:\\s+\\d{1,5}[,.]\\d{2})?\\s*€?$/)
+    if (!single) continue
+    const name = single[1].replace(/[|*_]/g, '').trim()
+    const amount = money(single[2])
+    if (name.length >= 2 && amount !== undefined && !/^\\d+$/.test(name) && items.length < 80) {
+      items.push({ name, qty: 1, amount })
+    }
+  }
+  return { text, confidence, date, total, discount: discount ?? 0, lines: items }
+}
 async function filePages(file: File): Promise<(Blob | HTMLCanvasElement)[]> {
   if (file.type.startsWith('image/')) return [file]
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
@@ -115,7 +150,7 @@ export async function readTicket(file: File, onProgress?: (progress: number) => 
     parts.push(result.data.text)
     confidences.push(result.data.confidence)
   }
-  return parseText(parts.join('\n'), confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0)
+  return parseTicketText(parts.join('\n'), confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0)
 }
 
 
