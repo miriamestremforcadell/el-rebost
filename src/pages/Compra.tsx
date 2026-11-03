@@ -192,7 +192,7 @@ declare global {
   }
 }
 const NUMBER_WORDS: Record<string, number> = {
-  un: 1, una: 1, uno: 1, una: 1, dos: 2, dues: 2, dos: 2, tres: 3, quatre: 4, cuatro: 4,
+  un: 1, una: 1, uno: 1, dos: 2, dues: 2, tres: 3, quatre: 4, cuatro: 4,
   cinc: 5, cinco: 5, sis: 6, seis: 6, set: 7, siete: 7, vuit: 8, ocho: 8, nou: 9, nueve: 9,
   deu: 10, diez: 10, mig: 0.5, media: 0.5, medio: 0.5
 }
@@ -214,7 +214,7 @@ function parseVoiceItems(raw: string): VoiceLine[] {
       : /^(llauna|llaunes|lata|latas)$/.test(unitRaw) ? "llauna"
       : /^(pot|pots|bote|botes)$/.test(unitRaw) ? "pot"
       : /^(caixa|caixes|caja|cajas)$/.test(unitRaw) ? "caixa" : "ud"
-    const name = (match[3] || "").trim().replace(/[.!?]+$/, "")
+    const name = (match[3] || "").trim().replace(/^d[’\']\s*/i, "").replace(/[.!?]+$/, "")
     if (name) rows.push({ id: rows.length, name, qty: String(Number.isFinite(qty) && qty > 0 ? qty : 1), unit })
   }
   return rows
@@ -272,7 +272,7 @@ function VoiceAdd({ listId, products, cats, stores, onClose }: {
       if (existing) {
         await db.listItems.update(existing.id!, { qty: Math.round((existing.qty + qty) * 1000) / 1000, ...(storeId !== undefined ? { storeId } : {}) })
       } else {
-        const category = matched?.categoryId ?? cats.find((cat) => cat.name.toLocaleLowerCase("ca").includes(line.name.toLocaleLowerCase("ca")))?.id
+        const category = matched?.categoryId
         await db.listItems.add({ listId, name: matched?.name ?? line.name.trim(), qty, unit: line.unit, storeId, categoryId: category, photo: matched?.photo, emoji: matched?.emoji, brand: matched?.brand, barcode: matched?.barcode, estPrice: matched?.price })
       }
     }
