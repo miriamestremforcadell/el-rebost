@@ -4,18 +4,20 @@ import { db, seed, ensureCycles, getSettings, DEFAULT_SETTINGS } from './db'
 import Inici from './pages/Inici'
 import Compra from './pages/Compra'
 import Rebost from './pages/Rebost'
+import Receptes from './pages/Receptes'
 import Tiquets from './pages/Tiquets'
 import Analisi from './pages/Analisi'
 import Configuracio from './pages/Configuracio'
 
-export type Tab = 'inici' | 'compra' | 'rebost' | 'tiquets' | 'analisi' | 'config'
+export type Tab = 'inici' | 'compra' | 'rebost' | 'receptes' | 'tiquets' | 'analisi' | 'config'
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'inici', label: 'Inici', icon: '🏡' },
   { id: 'compra', label: 'Compra', icon: '🛒' },
-  { id: 'rebost', label: 'El meu rebost', icon: '🫙' },
+  { id: 'rebost', label: 'Rebost', icon: '🫙' },
+  { id: 'receptes', label: 'Receptes', icon: '🍲' },
   { id: 'tiquets', label: 'Tiquets', icon: '🧾' },
   { id: 'analisi', label: 'Anàlisi', icon: '📊' },
-  { id: 'config', label: 'Configuració', icon: '⚙️' },
+  { id: 'config', label: 'Config.', icon: '⚙️' },
 ]
 
 function applyTheme(pref: string) {
@@ -53,16 +55,17 @@ export default function App() {
         {tab === 'inici' && <Inici go={go} />}
         {tab === 'compra' && <Compra />}
         {tab === 'rebost' && <Rebost />}
+        {tab === 'receptes' && <Receptes />}
         {tab === 'tiquets' && <Tiquets />}
         {tab === 'analisi' && <Analisi />}
         {tab === 'config' && <Configuracio onProducts={() => go('rebost')} />}
       </main>
       <nav className="nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur" aria-label="Navegació principal">
-        <ul className="mx-auto grid max-w-[720px] grid-cols-6">
+        <ul className="mx-auto grid max-w-[720px] grid-cols-7">
           {TABS.map((t) => (
             <li key={t.id}>
               <button onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined}
-                className={`flex h-[58px] w-full flex-col items-center justify-center gap-0.5 px-0 text-[9.5px] leading-tight tracking-tight ${tab === t.id ? 'font-semibold text-brand' : 'text-mute'}`}>
+                className={`flex h-[58px] w-full flex-col items-center justify-center gap-0.5 px-0 text-[8px] leading-tight tracking-tight ${tab === t.id ? 'font-semibold text-brand' : 'text-mute'}`}>
                 <span className={`text-lg ${tab === t.id ? '' : 'grayscale opacity-70'}`}>{t.icon}</span>
                 <span className="text-center">{t.label}</span>
               </button>
