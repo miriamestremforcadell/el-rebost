@@ -33,7 +33,7 @@ function loadScript(src: string): Promise<void> {
   return promise
 }
 
-function parseText(text: string, confidence: number): TicketOcrResult {
+export function parseTicketText(text: string, confidence = 100): TicketOcrResult {
   const lines = text.split(/\\r?\\n/).map((s) => s.replace(/\\s+/g, ' ').trim()).filter(Boolean)
   const dateMatch = text.match(/\\b(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4})\\b/)
   let date: string | undefined
@@ -150,7 +150,7 @@ export async function readTicket(file: File, onProgress?: (progress: number) => 
     parts.push(result.data.text)
     confidences.push(result.data.confidence)
   }
-  return parseText(parts.join('\n'), confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0)
+  return parseTicketText(parts.join('\n'), confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0)
 }
 
 
