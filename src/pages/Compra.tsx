@@ -114,7 +114,7 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
   }
   return (
     <>
-      <Title right={<div className="flex gap-2"><button type="button" className="btn-s" onClick={() => setVoiceAdding(true)} disabled={!cur}>🎙️ Veu</button><button type="button" className="btn-s" onClick={() => setScanning(true)} disabled={!cur}>▦ Escaneja</button><button type="button" className="btn-p" onClick={() => setAdding(true)} disabled={!cur}>＋ Producte</button></div>}>Compra</Title>
+      <Title right={<div className="flex shrink-0 items-center gap-1.5"><button type="button" className="btn-s !h-10 !min-h-[40px] !w-10 !px-0 !py-0 text-lg" onClick={() => setVoiceAdding(true)} disabled={!cur} aria-label="Afegeix productes per veu" title="Afegeix productes per veu">🎙️</button><button type="button" className="btn-s !h-10 !min-h-[40px] !w-10 !px-0 !py-0 text-lg" onClick={() => setScanning(true)} disabled={!cur} aria-label="Escaneja un codi de barres" title="Escaneja un codi de barres">📷</button><button type="button" className="btn-p !h-10 !min-h-[40px] !w-10 !px-0 !py-0 text-lg" onClick={() => setAdding(true)} disabled={!cur} aria-label="Afegeix un producte" title="Afegeix un producte">➕</button></div>}>Compra</Title>
       <div className="mb-3 flex gap-2 overflow-x-auto">
         {lists.map((l) => <button key={l.id} onClick={() => { setSel(l.id); setStoreFilter('all') }} className={cur?.id === l.id ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'}>{l.name}</button>)}
       </div>
