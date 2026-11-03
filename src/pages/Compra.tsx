@@ -82,7 +82,7 @@ function BarcodeLookup({ onProduct, onClose }: { onProduct: (p: OffProduct) => v
   </Sheet>
 }
 
-export default function Compra() {
+export default function Compra({ onModeChange }: { onModeChange?: (active: boolean) => void }) {
   const lists = useLiveQuery(() => db.lists.toArray(), [], [])
   const [sel, setSel] = useState<number | undefined>()
   const [newName, setNewName] = useState('')
@@ -97,6 +97,7 @@ export default function Compra() {
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<OffProduct | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [shoppingMode, setShoppingMode] = useState(false)
   const [group, setGroup] = useState<'categoria' | 'establiment' | 'seccio'>('seccio')
   const [storeFilter, setStoreFilter] = useState<number | 'all' | 'none'>('all')
   const visibleItems = items.filter((i) => storeFilter === 'all' || (storeFilter === 'none' ? !i.storeId : i.storeId === storeFilter))
@@ -122,6 +123,7 @@ export default function Compra() {
       {!cur && <Empty>Encara no tens cap llista de compra.</Empty>}
       {cur && (
         <>
+          <div className="mb-3"><button type="button" className="btn-p w-full !min-h-[52px] text-base" onClick={() => { setShoppingMode(true); onModeChange?.(true) }} disabled={!items.some((i) => !i.bought)}>🛒 Comença a comprar</button></div>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
             <div className="min-w-0"><div className="text-mute">Pendent estimat: <b className="text-ink">{eur(pendingEstimate)}</b> · Comprat (real o estimat): <b className="text-ink">{eur(spent)}</b></div><div className="text-xs text-mute">Total previst: {eur(totalPlan)}{budget > 0 ? ' · Pressupost: ' + eur(budget) : ''}</div></div>
             <select className="!w-auto" value={group} onChange={(e) => setGroup(e.target.value as 'categoria' | 'establiment' | 'seccio')} aria-label="Agrupa per"><option value="seccio">Per secció</option><option value="categoria">Per categoria</option><option value="establiment">Per establiment</option></select>
@@ -157,10 +159,96 @@ export default function Compra() {
           </div>
         </>
       )}
+      {shoppingMode && cur && <ShoppingMode listName={cur.name} items={items} stores={stores} cats={cats} onClose={() => { setShoppingMode(false); onModeChange?.(false) }} onConfirm={() => setConfirming(true)} />}
       {scanning && <BarcodeLookup onProduct={(p) => { setScanResult(p); setAdding(true); setScanning(false) }} onClose={() => setScanning(false)} />}
       {adding && cur && <AddItem listId={cur.id!} cats={cats} stores={stores} purchases={purchases} scanResult={scanResult} onScanUsed={() => setScanResult(null)} defaultStoreId={typeof storeFilter === 'number' ? storeFilter : undefined} onClose={() => setAdding(false)} />}
       {confirming && cur && <ConfirmBuy listId={cur.id!} items={items.filter((i) => i.bought)} onClose={() => setConfirming(false)} />}
     </>
+  )
+}
+
+
+function ShoppingMode({ listName, items, stores, cats, onClose, onConfirm }: {
+  listName: string
+  items: ListItem[]
+  stores: { id?: number; name: string }[]
+  cats: { id?: number; name: string; icon?: string }[]
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const [storeFilter, setStoreFilter] = useState<number | 'all' | 'none'>('all')
+  const [lastMarked, setLastMarked] = useState<number | undefined>()
+  const pending = items.filter((item) => !item.bought)
+  const visible = pending.filter((item) => storeFilter === 'all' || (storeFilter === 'none' ? !item.storeId : item.storeId === storeFilter))
+  const bought = items.filter((item) => item.bought)
+  const progress = items.length ? Math.round(bought.length / items.length * 100) : 0
+  const estimate = pending.reduce((sum, item) => sum + (item.estPrice ?? 0) * item.qty, 0)
+  const groups = new Map<string, ListItem[]>()
+  for (const item of visible) {
+    const section = item.section || sectionForCategory(cats.find((category) => category.id === item.categoryId)?.name)
+    groups.set(section, [...(groups.get(section) ?? []), item])
+  }
+  const markBought = async (item: ListItem) => {
+    await db.listItems.update(item.id!, { bought: true, ...(item.paidPrice === undefined && item.estPrice !== undefined ? { paidPrice: item.estPrice } : {}) })
+    setLastMarked(item.id)
+  }
+  const undo = async () => {
+    if (lastMarked === undefined) return
+    await db.listItems.update(lastMarked, { bought: false })
+    setLastMarked(undefined)
+  }
+  const lastItem = items.find((item) => item.id === lastMarked && item.bought)
+  return (
+    <div className="shopping-mode fixed inset-0 z-[60] flex flex-col bg-bg" role="dialog" aria-modal="true" aria-label="Mode compra">
+      <header className="shrink-0 border-b border-line bg-surface px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+          <div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wide text-mute">Mode compra</p><h1 className="truncate text-xl font-bold">{listName}</h1></div>
+          <button type="button" className="btn-s !min-h-[40px] !px-3" onClick={onClose}>Surt ✕</button>
+        </div>
+        <div className="mx-auto mt-3 max-w-2xl">
+          <div className="mb-1 flex justify-between text-sm"><span>{bought.length} de {items.length} productes</span><b>{progress}%</b></div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: progress + '%' }} /></div>
+          <div className="mt-2 flex justify-between text-xs text-mute"><span>{pending.length} pendents</span><span>Estimació pendent: {eur(estimate)}</span></div>
+        </div>
+      </header>
+      <div className="shrink-0 border-b border-line bg-bg px-4 py-2">
+        <div className="mx-auto flex max-w-2xl gap-2 overflow-x-auto">
+          <button type="button" className={storeFilter === 'all' ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'} onClick={() => setStoreFilter('all')}>Tots ({pending.length})</button>
+          {stores.map((store) => <button type="button" key={store.id} className={storeFilter === store.id ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'} onClick={() => setStoreFilter(store.id!)}>{store.name} ({pending.filter((item) => item.storeId === store.id).length})</button>)}
+          <button type="button" className={storeFilter === 'none' ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'} onClick={() => setStoreFilter('none')}>Sense establiment ({pending.filter((item) => !item.storeId).length})</button>
+        </div>
+      </div>
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-2xl">
+          {lastItem && <button type="button" className="mb-3 w-full rounded-xl border border-brand/30 bg-brandsoft px-4 py-3 text-left text-sm font-semibold text-brand" onClick={() => void undo()}>↶ Desfés: {lastItem.name}</button>}
+          {pending.length === 0 ? (
+            <div className="card py-8 text-center">
+              <div className="mb-2 text-4xl">🎉</div><h2 className="text-xl font-bold">Compra completada!</h2>
+              <p className="mt-2 text-sm text-mute">Has marcat tots els {items.length} productes de la llista.</p>
+              <p className="mt-1 text-lg font-semibold">{eur(bought.reduce((sum, item) => sum + (item.paidPrice ?? item.estPrice ?? 0) * item.qty, 0))}</p>
+              <button type="button" className="btn-p mt-5 w-full" onClick={onConfirm}>Confirma la compra</button>
+              <button type="button" className="btn-s mt-2 w-full" onClick={onClose}>Torna a la llista</button>
+            </div>
+          ) : visible.length === 0 ? (
+            <div className="card text-center text-sm text-mute">No queden productes pendents en aquest establiment.</div>
+          ) : [...groups.entries()].map(([section, sectionItems]) => (
+            <section key={section} className="mb-5">
+              <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-mute">{section}</h2>
+              <ul className="space-y-2">{sectionItems.map((item) => (
+                <li key={item.id}>
+                  <button type="button" className="card flex min-h-[76px] w-full items-center gap-3 !p-3 text-left active:scale-[.99]" onClick={() => void markBought(item)} aria-label={`Marca ${item.name} com a comprat`}>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-brand/50 text-brand"><span className="text-lg">＋</span></span>
+                    <span className="min-w-0 flex-1"><span className="block font-semibold">{item.name}</span><span className="text-sm text-mute">{item.qty} {item.unit}{item.note ? ' · ' + item.note : ''}</span></span>
+                    <span className="shrink-0 text-xs text-mute">{item.estPrice !== undefined ? eur(item.estPrice * item.qty) : ''}</span>
+                  </button>
+                </li>
+              ))}</ul>
+            </section>
+          ))}
+        </div>
+      </main>
+      {pending.length > 0 && <footer className="shrink-0 border-t border-line bg-surface px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"><div className="mx-auto flex max-w-2xl items-center justify-between gap-3"><span className="text-sm text-mute">{pending.length} productes per trobar</span><button type="button" className="btn-s !min-h-[40px]" onClick={onClose}>Pausa la compra</button></div></footer>}
+    </div>
   )
 }
 
