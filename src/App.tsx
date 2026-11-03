@@ -28,6 +28,7 @@ function applyTheme(pref: string) {
 export default function App() {
   const [tab, setTab] = useState<Tab>('inici')
   const [ready, setReady] = useState(false)
+  const [shoppingMode, setShoppingMode] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
   const settings = useLiveQuery(getSettings, [], DEFAULT_SETTINGS)
   const pending = useLiveQuery(() => db.alerts.count(), [], 0)
@@ -47,20 +48,20 @@ export default function App() {
   }, [])
 
   if (!ready) return <div className="grid h-full place-items-center text-mute">Carregant El Rebost…</div>
-  const go = (t: Tab) => { setTab(t); window.scrollTo(0, 0) }
+  const go = (t: Tab) => { setShoppingMode(false); setTab(t); window.scrollTo(0, 0) }
   return (
     <div className="min-h-full">
       {!online && <div className="bg-sand/30 px-3 py-1.5 text-center text-xs text-warn">Sense connexió: les dades es guarden en aquest dispositiu.</div>}
       <main key={tab} className="page">
         {tab === 'inici' && <Inici go={go} />}
-        {tab === 'compra' && <Compra />}
+        {tab === 'compra' && <Compra onModeChange={setShoppingMode} />}
         {tab === 'rebost' && <Rebost />}
         {tab === 'receptes' && <Receptes />}
         {tab === 'tiquets' && <Tiquets />}
         {tab === 'analisi' && <Analisi />}
         {tab === 'config' && <Configuracio onProducts={() => go('rebost')} />}
       </main>
-      <nav className="nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur" aria-label="Navegació principal">
+      {!shoppingMode && <nav className="nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur" aria-label="Navegació principal">
         <ul className="mx-auto grid max-w-[720px] grid-cols-7">
           {TABS.map((t) => (
             <li key={t.id}>
@@ -72,7 +73,7 @@ export default function App() {
             </li>
           ))}
         </ul>
-      </nav>
+      </nav>}
       {pending < 0 && null}
     </div>
   )
