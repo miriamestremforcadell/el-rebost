@@ -5,15 +5,15 @@ export interface Store { id?: number; name: string; type: string; location?: str
 export interface Category { id?: number; name: string; icon: string; archived?: boolean }
 export interface Location { id?: number; name: string }
 export interface Product {
-  id?: number; name: string; brand?: string; categoryId?: number; qty: number; unit: string; format?: string
+  id?: number; name: string; brand?: string; barcode?: string; categoryId?: number; qty: number; unit: string; format?: string
   locationId?: number; boughtAt?: string; openedAt?: string; expiry?: string; min?: number; price?: number; notes?: string; photo?: Blob; emoji?: string
 }
 export type MovementKind = 'compra' | 'consum' | 'correcció' | 'malmès' | 'recepció' | 'manual'
 export interface Movement { id?: number; productId: number; ts: string; delta: number; kind: MovementKind; ref?: string; note?: string }
-export interface ShopList { id?: number; name: string; createdAt: string }
+export interface ShopList { id?: number; name: string; createdAt: string; budget?: number }
 export interface ListItem {
   id?: number; listId: number; name: string; qty: number; unit: string; note?: string; estPrice?: number
-  estSource?: 'última compra' | 'altre establiment' | 'manual'; storeId?: number; categoryId?: number; bought?: boolean; photo?: Blob; emoji?: string
+  estSource?: 'última compra' | 'altre establiment' | 'manual'; storeId?: number; categoryId?: number; bought?: boolean; photo?: Blob; emoji?: string; section?: string; paidPrice?: number; brand?: string; barcode?: string
 }
 export interface PurchaseLine { id: string; name: string; qty: number; unit: string; unitPrice?: number; amount: number; categoryId?: number }
 export interface Purchase {
