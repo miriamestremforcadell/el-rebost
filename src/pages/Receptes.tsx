@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Product } from '../db'
 import { inventoryInsights } from '../inventory'
@@ -103,7 +103,7 @@ function RecipeImportSheet({onClose,onSave}:{onClose:()=>void;onSave:(recipe:Rec
       <Field label="Captures de pantalla">
         <input className="w-full text-sm" type="file" accept="image/*" multiple onChange={(e)=>{setFiles(Array.from(e.target.files||[]));setDraft(null);setError('')}} />
       </Field>
-      {files.length>0 && <p className="text-xs text-mute">{files.length} imatge(s): {files.map((file)=>file.name).join(', ')}</p>}
+      {files.length>0 && <><p className="text-xs text-mute">{files.length} imatge(s): {files.map((file)=>file.name).join(', ')}</p><ImportImagePreviews files={files} /></>}
       <button className="btn-p w-full" disabled={!files.length||busy} onClick={()=>void scan()}>{busy?'Llegint captures…':'Llegeix les captures'}</button>
       {busy && <div className="h-2 overflow-hidden rounded-full bg-page"><div className="h-full bg-brand transition-all" style={{width:(progress*100)+'%'}} /></div>}
       {error && <p className="rounded-lg bg-red-50 p-2 text-sm text-red-700">{error}</p>}
@@ -133,4 +133,15 @@ function RecipeDetail({recipe,products,expiringIds,onClose,onAdd}:{recipe:Recipe
   const match = matchRecipe(recipe,products,expiringIds)
   const missing = match.matches.filter((x)=>x.missing>0).map((x)=>({name:x.ingredient.name,qty:x.missing,unit:x.ingredient.unit}))
   return <Sheet title={recipe.name} onClose={onClose}><div className="space-y-3"><p className="text-sm text-mute">{recipe.description}</p><div className="flex gap-3 text-sm"><span>⏱ {recipe.minutes} min</span><span>🍽 {recipe.servings} racions</span></div><h3 className="font-semibold">Ingredients</h3><ul className="space-y-1 text-sm">{match.matches.map((x)=><li key={x.ingredient.name} className="flex justify-between gap-3"><span>{x.ingredient.name}{x.expiring ? ' · consumir aviat' : ''}</span><span className={x.missing>0?'text-warn':'text-brand'}>{x.ingredient.qty<=0?'Quantitat pendent de revisar':x.missing>0?'Falten '+fmtQty(x.missing)+' '+x.ingredient.unit:'Disponible'}</span></li>)}</ul>{missing.length>0 && <button className="btn-p w-full" onClick={()=>onAdd(missing)}>Afegeix el que falta a la compra</button>}<h3 className="font-semibold">Preparació</h3><ol className="list-decimal space-y-2 pl-5 text-sm">{recipe.steps.map((s,i)=><li key={i}>{s}</li>)}</ol>{recipe.sourceFiles?.length ? <p className="text-xs text-mute">Importada de: {recipe.sourceFiles.join(', ')}</p> : null}<div className="rounded-lg bg-page p-3 text-xs text-mute">Les quantitats són per a les racions indicades. Si tens un producte amb una unitat diferent, revisa’n la quantitat abans de comprar.</div></div></Sheet>
+}
+
+
+function ImportImagePreviews({files}:{files:File[]}) {
+  const [urls,setUrls] = useState<string[]>([])
+  useEffect(() => {
+    const next = files.map((file)=>URL.createObjectURL(file))
+    setUrls(next)
+    return () => next.forEach((url)=>URL.revokeObjectURL(url))
+  }, [files])
+  return <div className="grid grid-cols-3 gap-2">{urls.map((url,index)=><div key={url} className="overflow-hidden rounded-lg bg-page"><img src={url} alt={'Previsualització de '+files[index].name} className="h-28 w-full object-cover"/><p className="truncate px-1 py-1 text-[10px] text-mute">{files[index].name}</p></div>)}</div>
 }
