@@ -12,7 +12,7 @@ function sectionForCategory(category?: string) {
   if (s.includes('fruita') || s.includes('verdura')) return 'Fruita i verdura'
   if (s.includes('carn') || s.includes('poll')) return 'Carnisseria i aviram'
   if (s.includes('peix')) return 'Peixateria'
-  if (s.includes('pa') || s.includes('fleca')) return 'Forn i fleca'
+  if (s.includes('pa i fleca') || s.includes('fleca')) return 'Forn i fleca'
   if (s.includes('làct') || s.includes('ous')) return 'Làctics i ous'
   if (s.includes('pasta') || s.includes('arròs') || s.includes('llegum')) return 'Pasta, arròs i llegums'
   if (s.includes('conserv') || s.includes('sals')) return 'Conserves i salses'
@@ -202,6 +202,7 @@ function AddItem({ listId, cats, stores, purchases, scanResult, onScanUsed, defa
     <Sheet title="Afegeix a la llista" onClose={onClose}>
       <div className="space-y-3">
         <Field label="Producte (pots escriure'n un de nou)"><input autoFocus list="habituals" value={f.name ?? ''} onChange={(e) => { set('name', e.target.value); setSelectedProductId('') }} placeholder="Escriu el nom del producte" /></Field>
+        <Field label="Marca (opcional)"><input value={f.brand ?? ''} onChange={(e) => set('brand', e.target.value)} placeholder="Marca del producte" /></Field>
         <datalist id="habituals">{suggestions.map((p) => <option key={p.id} value={p.name} />)}</datalist>
         <Field label="O selecciona un producte del rebost"><select value={selectedProductId} onChange={(e) => { const id = e.target.value ? Number(e.target.value) : ''; setSelectedProductId(id); const product = suggestions.find((p) => p.id === id); if (product) setF((current) => ({ ...current, name: product.name, unit: product.unit, categoryId: product.categoryId, estPrice: product.price, photo: product.photo, emoji: product.emoji })) }}><option value="">— Tria un producte —</option>{suggestions.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.qty} {p.unit} disponibles</option>)}</select></Field>
         <div className="grid grid-cols-2 gap-3">
@@ -230,7 +231,7 @@ function ConfirmBuy({ items, onClose }: { items: ListItem[]; onClose: () => void
   const run = async () => {
     for (const i of items.filter((x) => pick.has(x.id!))) {
       const have = await findProduct(i.name, i.unit)
-      if (have) { await db.products.update(have.id!, { qty: have.qty + i.qty, photo: have.photo ?? i.photo, emoji: have.emoji ?? i.emoji }); await db.movements.add({ productId: have.id!, ts: new Date().toISOString(), delta: i.qty, kind: 'compra', ref: `llista:${i.id}` }) }
+      if (have) { await db.products.update(have.id!, { qty: have.qty + i.qty, photo: have.photo ?? i.photo, emoji: have.emoji ?? i.emoji, brand: have.brand ?? i.brand, barcode: have.barcode ?? i.barcode }); await db.movements.add({ productId: have.id!, ts: new Date().toISOString(), delta: i.qty, kind: 'compra', ref: `llista:${i.id}` }) }
       else await addProduct({ name: i.name, qty: i.qty, unit: i.unit, categoryId: i.categoryId, locationId: loc, price: i.estPrice, photo: i.photo, emoji: i.emoji, brand: i.brand, barcode: i.barcode }, 'compra', `llista:${i.id}`)
     }
     await db.listItems.bulkDelete(items.map((i) => i.id!))
