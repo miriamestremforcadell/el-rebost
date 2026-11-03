@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Product } from '../db'
 import { inventoryInsights } from '../inventory'
-import { RECIPES, matchRecipe, type Recipe, type RecipeMatch } from '../recipes'
+import { RECIPES, matchRecipe, missingIngredientsForRecipes, type Recipe, type RecipeMatch } from '../recipes'
 import { todayISO } from '../talkual'
 import { Empty, Field, Sheet, Title } from '../ui'
 
@@ -21,18 +21,13 @@ export default function Receptes() {
   const [selected, setSelected] = useState<Recipe | null>(null)
   const today = todayISO()
   const insights = inventoryInsights(products, movements, today)
-  const expiringIds = useMemo(() => new Set(insights.expiry.map((x) => x.product.id)), [insights.expiry])
+  const expiringIds = useMemo(() => new Set(insights.expiry.map((x) => x.product.id).filter((id): id is number => id !== undefined)), [insights.expiry])
   const matches = useMemo(() => RECIPES.map((r) => matchRecipe(r, products, expiringIds)).sort((a,b) => b.score-a.score || a.recipe.minutes-b.recipe.minutes), [products, expiringIds])
   const plan = (planRow?.value && typeof planRow.value === 'object' ? planRow.value : {}) as Plan
   const weekStart = mondayOf(today)
   const week = Array.from({length:7}, (_,i) => { const d = new Date(weekStart); d.setDate(d.getDate()+i); return dateKey(d) })
   const planned = week.flatMap((day) => { const recipe = RECIPES.find((r) => r.id === plan[day]); return recipe ? [matchRecipe(recipe, products, expiringIds)] : [] })
-  const weeklyMissing = new Map<string, { name:string; qty:number; unit:string }>()
-  for (const match of planned) for (const m of match.matches) if (m.missing > 0) {
-    const key = norm(m.ingredient.name) + '|' + m.ingredient.unit
-    const old = weeklyMissing.get(key)
-    weeklyMissing.set(key, { name:m.ingredient.name, qty:(old?.qty ?? 0)+m.missing, unit:m.ingredient.unit })
-  }
+  const weeklyMissing = missingIngredientsForRecipes(planned.map((m) => m.recipe), products)
   const savePlan = async (day: string, recipeId: string) => {
     await db.settings.put({ key:'mealPlan', value:{...plan, [day]:recipeId} })
   }
@@ -63,7 +58,7 @@ export default function Receptes() {
     </> : <>
       <div className="card mb-3 text-sm"><b>Menú setmanal</b><p className="mt-1 text-mute">Tria una recepta per a cada dia. El pla es desa en aquest dispositiu i pots canviar-lo quan vulguis.</p></div>
       <div className="space-y-2">{week.map((day)=> <div key={day} className="card !p-3"><div className="mb-2 font-medium capitalize">{dateLabel(day)}</div><Field label="Recepta"><select className="!min-h-[40px]" value={plan[day]??''} onChange={(e)=>void savePlan(day,e.target.value)}><option value="">— Sense planificar —</option>{RECIPES.map((r)=><option key={r.id} value={r.id}>{r.emoji} {r.name}</option>)}</select></Field>{plan[day] && <p className="mt-1 text-xs text-mute">{matches.find((m)=>m.recipe.id===plan[day])?.availableCount ?? 0} ingredients complets · {matches.find((m)=>m.recipe.id===plan[day])?.missingCount ?? 0} pendents</p>}</div>)}</div>
-      {planned.length>0 && <section className="card mt-3"><h2 className="font-semibold">Ingredients que falten</h2>{weeklyMissing.size===0 ? <p className="mt-2 text-sm text-mute">Tens tots els ingredients de les receptes planificades.</p> : <><ul className="mt-2 space-y-1 text-sm">{[...weeklyMissing.values()].map((x)=><li key={x.name+x.unit} className="flex justify-between gap-3"><span>{x.name}</span><b>{fmtQty(x.qty)} {x.unit}</b></li>)}</ul><button className="btn-p mt-3 w-full" onClick={()=>void addMissing([...weeklyMissing.values()])}>Afegeix els ingredients pendents a la compra</button></>}</section>}
+      {planned.length>0 && <section className="card mt-3"><h2 className="font-semibold">Ingredients que falten</h2>{weeklyMissing.length===0 ? <p className="mt-2 text-sm text-mute">Tens tots els ingredients de les receptes planificades.</p> : <><ul className="mt-2 space-y-1 text-sm">{weeklyMissing.map((x)=><li key={x.name+x.unit} className="flex justify-between gap-3"><span>{x.name}</span><b>{fmtQty(x.qty)} {x.unit}</b></li>)}</ul><button className="btn-p mt-3 w-full" onClick={()=>void addMissing([...weeklyMissing.values()])}>Afegeix els ingredients pendents a la compra</button></>}</section>}
     </>}
     {selected && <RecipeDetail recipe={selected} products={products} expiringIds={expiringIds} onClose={()=>setSelected(null)} onAdd={(items)=>void addMissing(items)} />}
   </>
