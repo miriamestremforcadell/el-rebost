@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Product } from '../db'
 import { inventoryInsights } from '../inventory'
-import { RECIPES, matchRecipe, missingIngredientsForRecipes, type Recipe, type RecipeMatch } from '../recipes'
+import { RECIPES, matchRecipe, missingIngredientsForRecipes, type Recipe, type RecipeMatch, type RecipeIngredient } from '../recipes'
+import { recipeFromOcrText } from '../recipeImport'
+import { readRecipeImages } from '../ocr'
 import { todayISO } from '../talkual'
 import { Empty, Field, Sheet, Title } from '../ui'
 
@@ -12,24 +14,35 @@ const mondayOf = (iso: string) => { const d = new Date(iso + 'T12:00:00'); const
 const dateKey = (d: Date) => [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-')
 const dateLabel = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('ca-ES', { weekday:'long', day:'numeric', month:'short' })
 const fmtQty = (n: number) => Number(n.toFixed(2)).toLocaleString('ca-ES')
+const emptyIngredient = (): RecipeIngredient => ({ name:'', qty:0, unit:'—' })
 
 export default function Receptes() {
   const products = useLiveQuery(() => db.products.toArray(), [], [] as Product[])
   const movements = useLiveQuery(() => db.movements.toArray(), [], [])
   const planRow = useLiveQuery(() => db.settings.get('mealPlan'), [], undefined)
+  const customRow = useLiveQuery(() => db.settings.get('customRecipes'), [], undefined)
+  const customRecipes = Array.isArray(customRow?.value) ? customRow.value as Recipe[] : []
+  const recipes = useMemo(() => [...RECIPES, ...customRecipes], [customRecipes])
   const [mode, setMode] = useState<'avui'|'setmana'>('avui')
   const [selected, setSelected] = useState<Recipe | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const today = todayISO()
   const insights = inventoryInsights(products, movements, today)
   const expiringIds = useMemo(() => new Set(insights.expiry.map((x) => x.product.id).filter((id): id is number => id !== undefined)), [insights.expiry])
-  const matches = useMemo(() => RECIPES.map((r) => matchRecipe(r, products, expiringIds)).sort((a,b) => b.score-a.score || a.recipe.minutes-b.recipe.minutes), [products, expiringIds])
+  const matches = useMemo(() => recipes.map((r) => matchRecipe(r, products, expiringIds)).sort((a,b) => b.score-a.score || a.recipe.minutes-b.recipe.minutes), [recipes, products, expiringIds])
   const plan = (planRow?.value && typeof planRow.value === 'object' ? planRow.value : {}) as Plan
   const weekStart = mondayOf(today)
   const week = Array.from({length:7}, (_,i) => { const d = new Date(weekStart); d.setDate(d.getDate()+i); return dateKey(d) })
-  const planned = week.flatMap((day) => { const recipe = RECIPES.find((r) => r.id === plan[day]); return recipe ? [matchRecipe(recipe, products, expiringIds)] : [] })
+  const planned = week.flatMap((day) => { const recipe = recipes.find((r) => r.id === plan[day]); return recipe ? [matchRecipe(recipe, products, expiringIds)] : [] })
   const weeklyMissing = missingIngredientsForRecipes(planned.map((m) => m.recipe), products)
   const savePlan = async (day: string, recipeId: string) => {
     await db.settings.put({ key:'mealPlan', value:{...plan, [day]:recipeId} })
+  }
+  const saveImportedRecipe = async (recipe: Recipe) => {
+    const next = [...customRecipes.filter((item) => item.id !== recipe.id), recipe]
+    await db.settings.put({ key:'customRecipes', value:next })
+    setImportOpen(false)
+    setSelected(recipe)
   }
   const addMissing = async (items: {name:string;qty:number;unit:string}[]) => {
     let list = (await db.lists.toArray())[0]
@@ -47,21 +60,68 @@ export default function Receptes() {
     alert(changed ? 'Ingredients pendents afegits a «'+list.name+'».' : 'No hi ha ingredients pendents.')
   }
   return <>
-    <Title>Receptes i aprofitament</Title>
+    <Title right={<button className="btn-p" onClick={()=>setImportOpen(true)}>＋ Importa recepta</button>}>Receptes i aprofitament</Title>
     <div className="mb-3 flex gap-2">
       <button className={mode==='avui'?'btn-p':'btn-s'} onClick={()=>setMode('avui')}>Què puc cuinar avui?</button>
       <button className={mode==='setmana'?'btn-p':'btn-s'} onClick={()=>setMode('setmana')}>Planifica la setmana</button>
     </div>
     {mode==='avui' ? <>
       <div className="card mb-3 text-sm"><b>Primer, el que caduca abans</b><p className="mt-1 text-mute">Ordenem les receptes segons els ingredients disponibles i donem prioritat als productes que tens a punt de caducar. Comprova sempre que els aliments siguin aptes per consumir.</p></div>
-      {products.filter((p)=>p.qty>0).length===0 ? <Empty>Afegeix productes al rebost per rebre propostes de receptes amb els ingredients que tens.</Empty> : <div className="space-y-2">{matches.map((m)=> <RecipeCard key={m.recipe.id} match={m} onOpen={()=>setSelected(m.recipe)} />)}</div>}
+      {products.filter((p)=>p.qty>0).length===0 && customRecipes.length===0 ? <Empty>Afegeix productes al rebost per rebre propostes de receptes amb els ingredients que tens, o importa una recepta.</Empty> : <div className="space-y-2">{matches.map((m)=> <RecipeCard key={m.recipe.id} match={m} onOpen={()=>setSelected(m.recipe)} />)}</div>}
     </> : <>
       <div className="card mb-3 text-sm"><b>Menú setmanal</b><p className="mt-1 text-mute">Tria una recepta per a cada dia. El pla es desa en aquest dispositiu i pots canviar-lo quan vulguis.</p></div>
-      <div className="space-y-2">{week.map((day)=> <div key={day} className="card !p-3"><div className="mb-2 font-medium capitalize">{dateLabel(day)}</div><Field label="Recepta"><select className="!min-h-[40px]" value={plan[day]??''} onChange={(e)=>void savePlan(day,e.target.value)}><option value="">— Sense planificar —</option>{RECIPES.map((r)=><option key={r.id} value={r.id}>{r.emoji} {r.name}</option>)}</select></Field>{plan[day] && <p className="mt-1 text-xs text-mute">{matches.find((m)=>m.recipe.id===plan[day])?.availableCount ?? 0} ingredients complets · {matches.find((m)=>m.recipe.id===plan[day])?.missingCount ?? 0} pendents</p>}</div>)}</div>
+      <div className="space-y-2">{week.map((day)=> <div key={day} className="card !p-3"><div className="mb-2 font-medium capitalize">{dateLabel(day)}</div><Field label="Recepta"><select className="!min-h-[40px]" value={plan[day]??''} onChange={(e)=>void savePlan(day,e.target.value)}><option value="">— Sense planificar —</option>{recipes.map((r)=><option key={r.id} value={r.id}>{r.emoji} {r.name}</option>)}</select></Field>{plan[day] && <p className="mt-1 text-xs text-mute">{matches.find((m)=>m.recipe.id===plan[day])?.availableCount ?? 0} ingredients complets · {matches.find((m)=>m.recipe.id===plan[day])?.missingCount ?? 0} pendents</p>}</div>)}</div>
       {planned.length>0 && <section className="card mt-3"><h2 className="font-semibold">Ingredients que falten</h2>{weeklyMissing.length===0 ? <p className="mt-2 text-sm text-mute">Tens tots els ingredients de les receptes planificades.</p> : <><ul className="mt-2 space-y-1 text-sm">{weeklyMissing.map((x)=><li key={x.name+x.unit} className="flex justify-between gap-3"><span>{x.name}</span><b>{fmtQty(x.qty)} {x.unit}</b></li>)}</ul><button className="btn-p mt-3 w-full" onClick={()=>void addMissing([...weeklyMissing.values()])}>Afegeix els ingredients pendents a la compra</button></>}</section>}
     </>}
     {selected && <RecipeDetail recipe={selected} products={products} expiringIds={expiringIds} onClose={()=>setSelected(null)} onAdd={(items)=>void addMissing(items)} />}
+    {importOpen && <RecipeImportSheet onClose={()=>setImportOpen(false)} onSave={(recipe)=>void saveImportedRecipe(recipe)} />}
   </>
+}
+
+function RecipeImportSheet({onClose,onSave}:{onClose:()=>void;onSave:(recipe:Recipe)=>void}) {
+  const [files,setFiles] = useState<File[]>([])
+  const [draft,setDraft] = useState<Recipe | null>(null)
+  const [progress,setProgress] = useState(0)
+  const [busy,setBusy] = useState(false)
+  const [error,setError] = useState('')
+  const update = (patch:Partial<Recipe>) => setDraft((current)=>current ? {...current,...patch} : current)
+  const scan = async () => {
+    setError(''); setBusy(true); setProgress(0)
+    try {
+      const result = await readRecipeImages(files,(value)=>setProgress(value))
+      setDraft({...recipeFromOcrText(result.text,result.confidence),sourceFiles:files.map((file)=>file.name)})
+    } catch (e) { setError(e instanceof Error ? e.message : 'No s’han pogut llegir les captures.') }
+    finally { setBusy(false) }
+  }
+  const updateIngredient = (index:number,patch:Partial<RecipeIngredient>) => {
+    if (!draft) return
+    update({ingredients:draft.ingredients.map((item,i)=>i===index?{...item,...patch}:item)})
+  }
+  return <Sheet title="Importa una recepta" onClose={onClose}>
+    <div className="space-y-3">
+      <p className="text-sm text-mute">Puja fins a 8 captures. La lectura es fa al navegador: les imatges no s’envien a cap servei d’IA ni a cap API de receptes.</p>
+      <Field label="Captures de pantalla">
+        <input className="w-full text-sm" type="file" accept="image/*" multiple onChange={(e)=>{setFiles(Array.from(e.target.files||[]));setDraft(null);setError('')}} />
+      </Field>
+      {files.length>0 && <p className="text-xs text-mute">{files.length} imatge(s): {files.map((file)=>file.name).join(', ')}</p>}
+      <button className="btn-p w-full" disabled={!files.length||busy} onClick={()=>void scan()}>{busy?'Llegint captures…':'Llegeix les captures'}</button>
+      {busy && <div className="h-2 overflow-hidden rounded-full bg-page"><div className="h-full bg-brand transition-all" style={{width:(progress*100)+'%'}} /></div>}
+      {error && <p className="rounded-lg bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+      {draft && <>
+        <div className="rounded-lg bg-page p-3 text-xs text-mute">Revisa el resultat: l’OCR pot confondre lletres, quantitats o unitats. El text no es tradueix automàticament; pots editar tots els camps en català abans de desar. Confiança de lectura aproximada: {Math.round(draft.ocrConfidence||0)}%.</div>
+        <Field label="Nom de la recepta"><input className="w-full" value={draft.name} onChange={(e)=>update({name:e.target.value})} /></Field>
+        <div className="grid grid-cols-2 gap-2"><Field label="Temps (minuts)"><input className="w-full" type="number" min="1" value={draft.minutes} onChange={(e)=>update({minutes:Math.max(1,Number(e.target.value)||1)})}/></Field><Field label="Racions"><input className="w-full" type="number" min="1" value={draft.servings} onChange={(e)=>update({servings:Math.max(1,Number(e.target.value)||1)})}/></Field></div>
+        <Field label="Descripció"><textarea className="w-full" rows={2} value={draft.description} onChange={(e)=>update({description:e.target.value})}/></Field>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Ingredients</h3><button className="btn-s text-sm" onClick={()=>update({ingredients:[...draft.ingredients,{...emptyIngredient()}]})}>＋ Afegeix</button></div>
+        {draft.ingredients.map((item,index)=><div key={index} className="grid grid-cols-[minmax(0,1fr)_62px_92px_28px] items-end gap-1"><Field label={index===0?'Ingredient':''}><input className="w-full !px-2" value={item.name} placeholder="Ingredient" onChange={(e)=>updateIngredient(index,{name:e.target.value})}/></Field><Field label={index===0?'Quantitat':''}><input className="w-full !px-1" type="number" step="any" value={item.qty||''} placeholder="?" onChange={(e)=>updateIngredient(index,{qty:Math.max(0,Number(e.target.value)||0)})}/></Field><Field label={index===0?'Unitat':''}><input className="w-full !px-1" value={item.unit} onChange={(e)=>updateIngredient(index,{unit:e.target.value})}/></Field><button className="btn-g" aria-label="Elimina ingredient" onClick={()=>update({ingredients:draft.ingredients.filter((_,i)=>i!==index)})}>×</button></div>)}
+        <p className="text-xs text-mute">Les quantitats marcades amb «?» o 0 no s’han pogut detectar: completa-les manualment.</p>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Preparació</h3><button className="btn-s text-sm" onClick={()=>update({steps:[...draft.steps,'']})}>＋ Pas</button></div>
+        {draft.steps.map((step,index)=><Field key={index} label={'Pas '+(index+1)}><div className="flex gap-1"><textarea className="w-full" rows={2} value={step} onChange={(e)=>update({steps:draft.steps.map((value,i)=>i===index?e.target.value:value)})}/><button className="btn-g" aria-label="Elimina pas" onClick={()=>update({steps:draft.steps.filter((_,i)=>i!==index)})}>×</button></div></Field>)}
+        <details className="rounded-lg bg-page p-2"><summary className="cursor-pointer text-sm font-medium">Text original detectat</summary><textarea className="mt-2 w-full" rows={7} value={draft.sourceText||''} onChange={(e)=>update({sourceText:e.target.value})}/></details>
+        <button className="btn-p w-full" disabled={!draft.name.trim()||!draft.ingredients.some((item)=>item.name.trim())} onClick={()=>onSave({...draft,name:draft.name.trim(),ingredients:draft.ingredients.filter((item)=>item.name.trim()),steps:draft.steps.map((step)=>step.trim()).filter(Boolean),sourceFiles:files.map((file)=>file.name),importedAt:draft.importedAt||new Date().toISOString()})}>Desa la recepta</button>
+      </>}
+    </div>
+  </Sheet>
 }
 
 function RecipeCard({match,onOpen}:{match:RecipeMatch;onOpen:()=>void}) {
@@ -72,5 +132,5 @@ function RecipeCard({match,onOpen}:{match:RecipeMatch;onOpen:()=>void}) {
 function RecipeDetail({recipe,products,expiringIds,onClose,onAdd}:{recipe:Recipe;products:Product[];expiringIds:Set<number>;onClose:()=>void;onAdd:(items:{name:string;qty:number;unit:string}[])=>void}) {
   const match = matchRecipe(recipe,products,expiringIds)
   const missing = match.matches.filter((x)=>x.missing>0).map((x)=>({name:x.ingredient.name,qty:x.missing,unit:x.ingredient.unit}))
-  return <Sheet title={recipe.name} onClose={onClose}><div className="space-y-3"><p className="text-sm text-mute">{recipe.description}</p><div className="flex gap-3 text-sm"><span>⏱ {recipe.minutes} min</span><span>🍽 {recipe.servings} racions</span></div><h3 className="font-semibold">Ingredients</h3><ul className="space-y-1 text-sm">{match.matches.map((x)=><li key={x.ingredient.name} className="flex justify-between gap-3"><span>{x.ingredient.name}{x.expiring ? ' · consumir aviat' : ''}</span><span className={x.missing>0?'text-warn':'text-brand'}>{x.missing>0?'Falten '+fmtQty(x.missing)+' '+x.ingredient.unit:'Disponible'}</span></li>)}</ul>{missing.length>0 && <button className="btn-p w-full" onClick={()=>onAdd(missing)}>Afegeix el que falta a la compra</button>}<h3 className="font-semibold">Preparació</h3><ol className="list-decimal space-y-2 pl-5 text-sm">{recipe.steps.map((s,i)=><li key={i}>{s}</li>)}</ol><div className="rounded-lg bg-page p-3 text-xs text-mute">Les quantitats són per a les racions indicades. Si tens un producte amb una unitat diferent, revisa’n la quantitat abans de comprar.</div></div></Sheet>
+  return <Sheet title={recipe.name} onClose={onClose}><div className="space-y-3"><p className="text-sm text-mute">{recipe.description}</p><div className="flex gap-3 text-sm"><span>⏱ {recipe.minutes} min</span><span>🍽 {recipe.servings} racions</span></div><h3 className="font-semibold">Ingredients</h3><ul className="space-y-1 text-sm">{match.matches.map((x)=><li key={x.ingredient.name} className="flex justify-between gap-3"><span>{x.ingredient.name}{x.expiring ? ' · consumir aviat' : ''}</span><span className={x.missing>0?'text-warn':'text-brand'}>{x.missing>0?'Falten '+fmtQty(x.missing)+' '+x.ingredient.unit:'Disponible'}</span></li>)}</ul>{missing.length>0 && <button className="btn-p w-full" onClick={()=>onAdd(missing)}>Afegeix el que falta a la compra</button>}<h3 className="font-semibold">Preparació</h3><ol className="list-decimal space-y-2 pl-5 text-sm">{recipe.steps.map((s,i)=><li key={i}>{s}</li>)}</ol>{recipe.sourceFiles?.length ? <p className="text-xs text-mute">Importada de: {recipe.sourceFiles.join(', ')}</p> : null}<div className="rounded-lg bg-page p-3 text-xs text-mute">Les quantitats són per a les racions indicades. Si tens un producte amb una unitat diferent, revisa’n la quantitat abans de comprar.</div></div></Sheet>
 }

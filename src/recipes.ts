@@ -1,5 +1,5 @@
 export interface RecipeIngredient { name: string; qty: number; unit: string; aliases?: string[] }
-export interface Recipe { id: string; name: string; emoji: string; minutes: number; servings: number; description: string; ingredients: RecipeIngredient[]; steps: string[]; tags: string[] }
+export interface Recipe { id: string; name: string; emoji: string; minutes: number; servings: number; description: string; ingredients: RecipeIngredient[]; steps: string[]; tags: string[]; sourceText?: string; sourceFiles?: string[]; importedAt?: string; ocrConfidence?: number }
 
 export const RECIPES: Recipe[] = [
   { id:'truita-patata', name:'Truita de patates i ceba', emoji:'🍳', minutes:35, servings:2, description:'Un clàssic senzill per aprofitar ous i patates.', tags:['vegetarià','econòmic'], ingredients:[

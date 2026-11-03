@@ -270,3 +270,23 @@ describe('planificació setmanal de receptes', () => {
     expect(result.matches.find((x) => x.ingredient.name === 'patata')?.missing).toBe(200)
   })
 })
+
+
+describe('importació de receptes des de captures', () => {
+  it('extreu el títol, ingredients, quantitats, temps i racions d’un text OCR en anglès', async () => {
+    const { recipeFromOcrText } = await import('./recipeImport')
+    const recipe = recipeFromOcrText('Chicken pasta\nIngredients:\n200 g pasta\n2 chicken breasts\n1 tbsp olive oil\nPreparation:\n1. Boil the pasta for 10 minutes.\n2. Cook the chicken and mix.', 87)
+    expect(recipe.name).toBe('Chicken pasta')
+    expect(recipe.ingredients[0]).toMatchObject({ name:'pasta', qty:200, unit:'g' })
+    expect(recipe.ingredients[1]).toMatchObject({ name:'chicken breasts', qty:2 })
+    expect(recipe.steps).toHaveLength(2)
+    expect(recipe.ocrConfidence).toBe(87)
+  })
+  it('conserva els ingredients sense quantitat perquè l’usuari els completi', async () => {
+    const { recipeFromOcrText } = await import('./recipeImport')
+    const recipe = recipeFromOcrText('Truita\nIngredients:\nOus\nSal al gust\nPreparació:\nBat els ous i cou la truita.')
+    expect(recipe.ingredients).toHaveLength(2)
+    expect(recipe.ingredients[0]).toMatchObject({ name:'Ous', qty:0, unit:'—' })
+    expect(recipe.ingredients[1]).toMatchObject({ name:'Sal al gust', qty:0, unit:'a gust' })
+  })
+})
