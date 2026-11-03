@@ -1,3 +1,4 @@
+// Extracció heurística sense IA: el text OCR es revisa i es corregeix manualment abans de desar.
 import type { Recipe, RecipeIngredient } from './recipes'
 
 const clean = (value: string) => value.replace(/^\s*(?:[-•*▪◦]+|\d+[.)-])\s*/, '').replace(/\s+/g, ' ').trim()
