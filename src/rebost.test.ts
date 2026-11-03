@@ -254,3 +254,19 @@ describe('receptes i aprofitament', () => {
     expect(result.matches.find((x) => x.ingredient.name === 'carbassó')?.missing).toBe(0.5)
   })
 })
+
+describe('planificació setmanal de receptes', () => {
+  it('acumula necessitats de diverses receptes i descompta l’estoc una sola vegada', async () => {
+    const { RECIPES, missingIngredientsForRecipes } = await import('./recipes')
+    const recipes = RECIPES.filter((r) => r.id === 'truita-carbasso')
+    const doubled = [...recipes, ...recipes]
+    const missing = missingIngredientsForRecipes(doubled, [{name:'Ous',qty:4,unit:'ud'}])
+    expect(missing.find((x) => x.name === 'ous')?.qty).toBe(2)
+  })
+  it('converteix kg a g quan compara l’estoc amb la recepta', async () => {
+    const { RECIPES, matchRecipe } = await import('./recipes')
+    const recipe = RECIPES.find((r) => r.id === 'truita-patata')!
+    const result = matchRecipe(recipe, [{name:'patates',qty:0.2,unit:'kg'}])
+    expect(result.matches.find((x) => x.ingredient.name === 'patata')?.missing).toBe(200)
+  })
+})
