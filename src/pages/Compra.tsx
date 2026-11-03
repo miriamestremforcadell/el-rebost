@@ -7,6 +7,16 @@ import { eur } from '../talkual'
 
 
 const SHOP_SECTIONS = ['Fruita i verdura','Carnisseria i aviram','Peixateria','Forn i fleca','Làctics i ous','Pasta, arròs i llegums','Conserves i salses','Esmorzar i snacks','Begudes','Congelats','Neteja','Higiene personal','Mascotes','Altres']
+function quantityStep(unit: string, qty: number) {
+  if (unit === 'kg' || unit === 'l') return 0.1
+  if (unit === 'g' || unit === 'ml') return 50
+  return qty < 1 ? 0.1 : 1
+}
+async function changeListItemQty(item: ListItem, direction: -1 | 1) {
+  const step = quantityStep(item.unit, item.qty)
+  const next = Math.round((item.qty + direction * step) * 1000) / 1000
+  if (next > 0 && Number.isFinite(next)) await db.listItems.update(item.id!, { qty: next })
+}
 function sectionForCategory(category?: string) {
   const s = (category || '').toLocaleLowerCase()
   if (s.includes('fruita') || s.includes('verdura')) return 'Fruita i verdura'
@@ -147,7 +157,15 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
                   <ProductVisual photo={i.photo} emoji={i.emoji} fallback={cats.find((c) => c.id === i.categoryId)?.icon} size="sm" />
                   <div className={`min-w-0 flex-1 ${i.bought ? 'line-through opacity-50' : ''}`}>
                     <div className="truncate font-medium">{i.name}</div>
-                    <div className="text-xs text-mute">{i.qty} {i.unit}{i.note ? ` · ${i.note}` : ''}</div>
+                    <div className="mt-1 flex items-center gap-2">
+                      {!i.bought && <div className="flex items-center gap-1 rounded-lg border border-line px-1 py-0.5">
+                        <button type="button" className="grid h-8 w-8 place-items-center rounded-md text-lg font-semibold text-ink disabled:opacity-30" onClick={() => void changeListItemQty(i, -1)} disabled={i.qty <= quantityStep(i.unit, i.qty)} aria-label={`Redueix la quantitat de ${i.name}`}>−</button>
+                        <span className="min-w-[3.5rem] text-center text-sm font-semibold tabular-nums">{i.qty} {i.unit}</span>
+                        <button type="button" className="grid h-8 w-8 place-items-center rounded-md bg-page text-lg font-semibold text-ink" onClick={() => void changeListItemQty(i, 1)} aria-label={`Augmenta la quantitat de ${i.name}`}>＋</button>
+                      </div>}
+                      {i.bought && <span className="text-xs text-mute">{i.qty} {i.unit}</span>}
+                      {i.note && <span className="text-xs text-mute">· {i.note}</span>}
+                    </div>
                     {!i.bought ? <div className="mt-1 flex items-center gap-2 text-xs text-mute"><span>Estimació €/u</span><input className="!w-24 !min-h-[32px] !py-1" inputMode="decimal" aria-label={`Preu estimat de ${i.name}`} value={i.estPrice ?? ''} placeholder="Sense preu" onChange={(e) => { const value = e.target.value.trim(); const price = value === '' ? undefined : num(value); if (price === undefined || (Number.isFinite(price) && price >= 0)) db.listItems.update(i.id!, { estPrice: price, estSource: price === undefined ? undefined : 'manual' }) }} />{i.estPrice !== undefined && <span>{eur(i.estPrice * i.qty)} total</span>}</div> : <div className="mt-1 flex items-center gap-2 text-xs text-mute"><span>Pagat €/u</span><input className="!w-24 !min-h-[32px] !py-1" inputMode="decimal" aria-label={`Preu pagat de ${i.name}`} value={i.paidPrice ?? ''} placeholder="Sense dada" onChange={(e) => { const v=e.target.value.trim(); const p=v === '' ? undefined : num(v); if (p === undefined || (Number.isFinite(p) && p >= 0)) db.listItems.update(i.id!, { paidPrice: p }) }} />{i.paidPrice !== undefined && <span>{eur(i.paidPrice * i.qty)} total</span>}</div>}
                   </div>
                   <button className="btn-g !px-2" onClick={() => db.listItems.delete(i.id!)} aria-label={`Elimina ${i.name}`}>🗑</button>
@@ -418,12 +436,16 @@ function ShoppingMode({ listName, items, stores, cats, onClose, onConfirm }: {
             <section key={section} className="mb-5">
               <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-mute">{section}</h2>
               <ul className="space-y-2">{sectionItems.map((item) => (
-                <li key={item.id}>
-                  <button type="button" className="card flex min-h-[76px] w-full items-center gap-3 !p-3 text-left active:scale-[.99]" onClick={() => void markBought(item)} aria-label={`Marca ${item.name} com a comprat`}>
+                <li key={item.id} className="card flex min-h-[76px] items-center gap-2 !p-3">
+                  <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left active:scale-[.99]" onClick={() => void markBought(item)} aria-label={`Marca ${item.name} com a comprat`}>
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-brand/50 text-brand"><span className="text-lg">＋</span></span>
                     <span className="min-w-0 flex-1"><span className="block font-semibold">{item.name}</span><span className="text-sm text-mute">{item.qty} {item.unit}{item.note ? ' · ' + item.note : ''}</span></span>
                     <span className="shrink-0 text-xs text-mute">{item.estPrice !== undefined ? eur(item.estPrice * item.qty) : ''}</span>
                   </button>
+                  <div className="flex shrink-0 items-center gap-1 rounded-lg border border-line px-1 py-0.5">
+                    <button type="button" className="grid h-8 w-8 place-items-center rounded-md text-lg font-semibold text-ink disabled:opacity-30" onClick={() => void changeListItemQty(item, -1)} disabled={item.qty <= quantityStep(item.unit, item.qty)} aria-label={`Redueix la quantitat de ${item.name}`}>−</button>
+                    <button type="button" className="grid h-8 w-8 place-items-center rounded-md bg-page text-lg font-semibold text-ink" onClick={() => void changeListItemQty(item, 1)} aria-label={`Augmenta la quantitat de ${item.name}`}>＋</button>
+                  </div>
                 </li>
               ))}</ul>
             </section>
