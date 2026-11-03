@@ -99,7 +99,7 @@ export default function Compra() {
   const [storeFilter, setStoreFilter] = useState<number | 'all' | 'none'>('all')
   const visibleItems = items.filter((i) => storeFilter === 'all' || (storeFilter === 'none' ? !i.storeId : i.storeId === storeFilter))
   const pendingEstimate = visibleItems.filter((i) => !i.bought).reduce((s, i) => s + (i.estPrice ?? 0) * i.qty, 0)
-  const spent = visibleItems.filter((i) => i.bought).reduce((s, i) => s + (i.paidPrice ?? i.estPrice ?? 0) * i.qty, 0)
+  const spent = (cur?.spentTotal ?? 0) + visibleItems.filter((i) => i.bought).reduce((s, i) => s + (i.paidPrice ?? i.estPrice ?? 0) * i.qty, 0)
   const totalPlan = pendingEstimate + spent
   const budget = cur?.budget ?? 0
   const groups = new Map<string, ListItem[]>()
@@ -150,14 +150,14 @@ export default function Compra() {
           ))}
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button className="btn-p" onClick={() => setConfirming(true)} disabled={!items.some((i) => i.bought)}>Confirma la compra</button>
-            <button className="btn-s" onClick={async () => { const id = (await db.lists.add({ name: `${cur.name} (còpia)`, createdAt: new Date().toISOString() })) as number; await db.listItems.bulkAdd(items.map(({ id: _i, ...r }) => ({ ...r, listId: id, bought: false, paidPrice: undefined }))); setSel(id) }}>Reutilitza</button>
+            <button className="btn-s" onClick={async () => { const id = (await db.lists.add({ name: `${cur.name} (còpia)`, createdAt: new Date().toISOString(), budget: cur.budget })) as number; await db.listItems.bulkAdd(items.map(({ id: _i, ...r }) => ({ ...r, listId: id, bought: false, paidPrice: undefined }))); setSel(id) }}>Reutilitza</button>
             <button className="btn-d col-span-2" onClick={async () => { if (confirm('Eliminar la llista sencera?')) { await db.listItems.where('listId').equals(cur.id!).delete(); await db.lists.delete(cur.id!); setSel(undefined) } }}>Elimina la llista</button>
           </div>
         </>
       )}
       {scanning && <BarcodeLookup onProduct={(p) => { setScanResult(p); setAdding(true); setScanning(false) }} onClose={() => setScanning(false)} />}
       {adding && cur && <AddItem listId={cur.id!} cats={cats} stores={stores} purchases={purchases} scanResult={scanResult} onScanUsed={() => setScanResult(null)} defaultStoreId={typeof storeFilter === 'number' ? storeFilter : undefined} onClose={() => setAdding(false)} />}
-      {confirming && cur && <ConfirmBuy items={items.filter((i) => i.bought)} onClose={() => setConfirming(false)} />}
+      {confirming && cur && <ConfirmBuy listId={cur.id!} items={items.filter((i) => i.bought)} onClose={() => setConfirming(false)} />}
     </>
   )
 }
@@ -223,7 +223,7 @@ function AddItem({ listId, cats, stores, purchases, scanResult, onScanUsed, defa
   )
 }
 
-function ConfirmBuy({ items, onClose }: { items: ListItem[]; onClose: () => void }) {
+function ConfirmBuy({ listId, items, onClose }: { listId: number; items: ListItem[]; onClose: () => void }) {
   const locs = useLiveQuery(() => db.locations.toArray(), [], [])
   const [pick, setPick] = useState<Set<number>>(new Set(items.map((i) => i.id!)))
   const [loc, setLoc] = useState<number | undefined>()
@@ -234,7 +234,7 @@ function ConfirmBuy({ items, onClose }: { items: ListItem[]; onClose: () => void
       if (have) { await db.products.update(have.id!, { qty: have.qty + i.qty, photo: have.photo ?? i.photo, emoji: have.emoji ?? i.emoji, brand: have.brand ?? i.brand, barcode: have.barcode ?? i.barcode }); await db.movements.add({ productId: have.id!, ts: new Date().toISOString(), delta: i.qty, kind: 'compra', ref: `llista:${i.id}` }) }
       else await addProduct({ name: i.name, qty: i.qty, unit: i.unit, categoryId: i.categoryId, locationId: loc, price: i.estPrice, photo: i.photo, emoji: i.emoji, brand: i.brand, barcode: i.barcode }, 'compra', `llista:${i.id}`)
     }
-    await db.listItems.bulkDelete(items.map((i) => i.id!))
+    const actual = items.reduce((sum, i) => sum + (i.paidPrice ?? i.estPrice ?? 0) * i.qty, 0)\n    const list = await db.lists.get(listId)\n    await db.lists.update(listId, { spentTotal: (list?.spentTotal ?? 0) + actual })\n    await db.listItems.bulkDelete(items.map((i) => i.id!))
     setDone(true)
   }
   return (
