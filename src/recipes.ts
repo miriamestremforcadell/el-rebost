@@ -39,9 +39,9 @@ export function matchRecipe(recipe: Recipe, products: { id?: number; name: strin
   const matches = recipe.ingredients.map((ingredient) => {
     const names = [ingredient.name, ...(ingredient.aliases ?? [])].map(normalize);
     const product = products.find((p) => p.qty > 0 && names.some((n) => normalize(p.name) === n || normalize(p.name).includes(n) || n.includes(normalize(p.name))));
-    const comparable = product && product.unit === ingredient.unit;
-    const available = product ? (comparable ? product.qty : ingredient.qty) : 0;
-    const missing = product ? (comparable ? Math.max(0, ingredient.qty - product.qty) : 0) : ingredient.qty;
+    const converted = product ? quantityInUnit(product.qty, product.unit, ingredient.unit) : undefined;
+    const available = converted ?? 0;
+    const missing = converted === undefined ? ingredient.qty : Math.max(0, ingredient.qty - converted);
     return { ingredient, available, missing, productName: product?.name, expiring: !!product?.id && expiringIds.has(product.id) };
   });
   const availableCount = matches.filter((m) => m.missing === 0).length;
