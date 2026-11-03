@@ -8,7 +8,7 @@ import { readRecipeImages } from '../ocr'
 import { todayISO } from '../talkual'
 import { Empty, Field, Sheet, Title } from '../ui'
 
-type Plan = Record<string, string>
+type Plan = Record<string, { dinar: string; sopar: string }>
 const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('ca').trim()
 const mondayOf = (iso: string) => { const d = new Date(iso + 'T12:00:00'); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return d }
 const dateKey = (d: Date) => [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-')
@@ -30,13 +30,15 @@ export default function Receptes() {
   const insights = inventoryInsights(products, movements, today)
   const expiringIds = useMemo(() => new Set(insights.expiry.map((x) => x.product.id).filter((id): id is number => id !== undefined)), [insights.expiry])
   const matches = useMemo(() => recipes.map((r) => matchRecipe(r, products, expiringIds)).sort((a,b) => b.score-a.score || a.recipe.minutes-b.recipe.minutes), [recipes, products, expiringIds])
-  const plan = (planRow?.value && typeof planRow.value === 'object' ? planRow.value : {}) as Plan
+  const storedPlan = (planRow?.value && typeof planRow.value === 'object' ? planRow.value : {}) as Record<string, string | { dinar?: string; sopar?: string }>
+  // Compatibilitat: les receptes planificades anteriorment per dia passen a ocupar el dinar.
+  const plan: Plan = Object.fromEntries(Object.entries(storedPlan).map(([day, value]) => [day, typeof value === 'string' ? { dinar:value, sopar:'' } : { dinar:value.dinar ?? '', sopar:value.sopar ?? '' }]))
   const weekStart = mondayOf(today)
   const week = Array.from({length:7}, (_,i) => { const d = new Date(weekStart); d.setDate(d.getDate()+i); return dateKey(d) })
-  const planned = week.flatMap((day) => { const recipe = recipes.find((r) => r.id === plan[day]); return recipe ? [matchRecipe(recipe, products, expiringIds)] : [] })
+  const planned = week.flatMap((day) => [plan[day]?.dinar, plan[day]?.sopar].flatMap((id) => { const recipe = recipes.find((r) => r.id === id); return recipe ? [matchRecipe(recipe, products, expiringIds)] : [] }))
   const weeklyMissing = missingIngredientsForRecipes(planned.map((m) => m.recipe), products)
-  const savePlan = async (day: string, recipeId: string) => {
-    await db.settings.put({ key:'mealPlan', value:{...plan, [day]:recipeId} })
+  const savePlan = async (day: string, meal: 'dinar' | 'sopar', recipeId: string) => {
+    await db.settings.put({ key:'mealPlan', value:{...plan, [day]:{...plan[day], [meal]:recipeId}} })
   }
   const saveImportedRecipe = async (recipe: Recipe) => {
     const next = [...customRecipes.filter((item) => item.id !== recipe.id), recipe]
@@ -69,8 +71,8 @@ export default function Receptes() {
       <div className="card mb-3 text-sm"><b>Primer, el que caduca abans</b><p className="mt-1 text-mute">Ordenem les receptes segons els ingredients disponibles i donem prioritat als productes que tens a punt de caducar. Comprova sempre que els aliments siguin aptes per consumir.</p></div>
       {products.filter((p)=>p.qty>0).length===0 && customRecipes.length===0 ? <Empty>Afegeix productes al rebost per rebre propostes de receptes amb els ingredients que tens, o importa una recepta.</Empty> : <div className="space-y-2">{matches.map((m)=> <RecipeCard key={m.recipe.id} match={m} onOpen={()=>setSelected(m.recipe)} />)}</div>}
     </> : <>
-      <div className="card mb-3 text-sm"><b>Menú setmanal</b><p className="mt-1 text-mute">Tria una recepta per a cada dia. El pla es desa en aquest dispositiu i pots canviar-lo quan vulguis.</p></div>
-      <div className="space-y-2">{week.map((day)=> <div key={day} className="card !p-3"><div className="mb-2 font-medium capitalize">{dateLabel(day)}</div><Field label="Recepta"><select className="!min-h-[40px]" value={plan[day]??''} onChange={(e)=>void savePlan(day,e.target.value)}><option value="">— Sense planificar —</option>{recipes.map((r)=><option key={r.id} value={r.id}>{r.emoji} {r.name}</option>)}</select></Field>{plan[day] && <p className="mt-1 text-xs text-mute">{matches.find((m)=>m.recipe.id===plan[day])?.availableCount ?? 0} ingredients complets · {matches.find((m)=>m.recipe.id===plan[day])?.missingCount ?? 0} pendents</p>}</div>)}</div>
+      <div className="card mb-3 text-sm"><b>Menú setmanal</b><p className="mt-1 text-mute">Planifica dinars i sopars. El menú es desa en aquest dispositiu i pots modificar-lo quan vulguis.</p></div>
+      <div className="space-y-2">{week.map((day)=> <div key={day} className="card !p-3"><div className="mb-3 font-medium capitalize">{dateLabel(day)}</div>{(['dinar','sopar'] as const).map((meal)=>{ const recipeId=plan[day]?.[meal]??''; const match=matches.find((m)=>m.recipe.id===recipeId); return <div key={meal} className={meal==='sopar'?'mt-3 border-t border-line pt-3':''}><Field label={meal==='dinar'?'☀️ Dinar':'🌙 Sopar'}><select className="!min-h-[40px]" value={recipeId} onChange={(e)=>void savePlan(day,meal,e.target.value)}><option value="">— Sense planificar —</option>{recipes.map((r)=><option key={r.id} value={r.id}>{r.emoji} {r.name}</option>)}</select></Field>{match && <p className="mt-1 text-xs text-mute">{match.availableCount} ingredients complets · {match.missingCount} pendents</p>}</div>})}</div>)}</div>
       {planned.length>0 && <section className="card mt-3"><h2 className="font-semibold">Ingredients que falten</h2>{weeklyMissing.length===0 ? <p className="mt-2 text-sm text-mute">Tens tots els ingredients de les receptes planificades.</p> : <><ul className="mt-2 space-y-1 text-sm">{weeklyMissing.map((x)=><li key={x.name+x.unit} className="flex justify-between gap-3"><span>{x.name}</span><b>{fmtQty(x.qty)} {x.unit}</b></li>)}</ul><button className="btn-p mt-3 w-full" onClick={()=>void addMissing([...weeklyMissing.values()])}>Afegeix els ingredients pendents a la compra</button></>}</section>}
     </>}
     {selected && <RecipeDetail recipe={selected} products={products} expiringIds={expiringIds} onClose={()=>setSelected(null)} onAdd={(items)=>void addMissing(items)} />}
