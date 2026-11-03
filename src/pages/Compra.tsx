@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, UNITS, addProduct, findProduct, type ListItem, type Purchase } from '../db'
+import { db, UNITS, addProduct, findProduct, type ListItem, type Purchase, type Product } from '../db'
 import { priceObservations } from '../stats'
 import { Sheet, Field, Empty, Title, ProductVisual, num } from '../ui'
 import { eur } from '../talkual'
@@ -93,6 +93,7 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
   const cats = useLiveQuery(() => db.categories.toArray(), [], [])
   const stores = useLiveQuery(() => db.stores.filter((s) => !s.archived).toArray(), [], [])
   const purchases = useLiveQuery(() => db.purchases.toArray(), [], [] as Purchase[])
+  const products = useLiveQuery(() => db.products.toArray(), [], [] as Product[])
   const [adding, setAdding] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<OffProduct | null>(null)
@@ -121,6 +122,7 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
         <button className="btn-s">Crea</button>
       </form>
       {!cur && <Empty>Encara no tens cap llista de compra.</Empty>}
+      {cur && <FavoriteProducts listId={cur.id!} products={products.filter((p) => p.favorite)} cats={cats} stores={stores} />}
       {cur && (
         <>
           <div className="mb-3"><button type="button" className="btn-p w-full !min-h-[52px] text-base" onClick={() => { setShoppingMode(true); onModeChange?.(true) }} disabled={!items.some((i) => !i.bought)}>🛒 Comença a comprar</button></div>
@@ -167,6 +169,56 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
   )
 }
 
+
+
+function FavoriteProducts({ listId, products, cats, stores }: {
+  listId: number
+  products: Product[]
+  cats: { id?: number; name: string; icon?: string }[]
+  stores: { id?: number; name: string }[]
+}) {
+  const [quantities, setQuantities] = useState<Record<number, string>>({})
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [open, setOpen] = useState(true)
+  const qtyFor = (p: Product) => quantities[p.id!] ?? String(p.habitualQty ?? 1)
+  const addOne = async (p: Product) => {
+    const qty = num(qtyFor(p))
+    if (!Number.isFinite(qty) || qty <= 0) return
+    const unit = p.habitualUnit || p.unit
+    const rows = await db.listItems.where("listId").equals(listId).toArray()
+    const existing = rows.find((item) => !item.bought && item.name.trim().toLocaleLowerCase("ca") === p.name.trim().toLocaleLowerCase("ca") && item.unit === unit)
+    if (existing) {
+      await db.listItems.update(existing.id!, { qty: Math.round((existing.qty + qty) * 1000) / 1000, storeId: p.preferredStoreId ?? existing.storeId })
+    } else {
+      await db.listItems.add({ listId, name: p.name, qty, unit, storeId: p.preferredStoreId, categoryId: p.categoryId, photo: p.photo, emoji: p.emoji, brand: p.brand, barcode: p.barcode, estPrice: p.price })
+    }
+    await db.products.update(p.id!, { habitualQty: qty, habitualUnit: unit })
+  }
+  const addSelected = async () => {
+    for (const p of products.filter((product) => selected.has(product.id!))) await addOne(p)
+    setSelected(new Set())
+    alert("Productes habituals afegits a la llista.")
+  }
+  return (
+    <section className="mb-4 rounded-xl border border-line bg-page p-3">
+      <button type="button" className="flex w-full items-center justify-between text-left font-semibold" onClick={() => setOpen(!open)}>
+        <span>★ Productes habituals ({products.length})</span><span className="text-sm text-mute">{open ? "Amaga −" : "Mostra +"}</span>
+      </button>
+      {open && (products.length === 0 ? <p className="mt-2 text-sm text-mute">Marca productes amb ☆ des del rebost per tenir-los aquí i afegir-los ràpidament.</p> : <>
+        <div className="mt-3 space-y-2">
+          {products.map((p) => <div key={p.id} className="flex items-center gap-2 rounded-lg bg-surface p-2">
+            <input type="checkbox" checked={selected.has(p.id!)} onChange={(e) => { const next = new Set(selected); e.target.checked ? next.add(p.id!) : next.delete(p.id!); setSelected(next) }} aria-label={`Selecciona ${p.name}`} />
+            <ProductVisual photo={p.photo} emoji={p.emoji} fallback={cats.find((c) => c.id === p.categoryId)?.icon} size="sm" />
+            <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{p.name}</div><div className="text-xs text-mute">{p.brand ? p.brand + " · " : ""}{stores.find((s) => s.id === p.preferredStoreId)?.name ?? "Sense establiment preferit"}</div></div>
+            <div className="flex items-center gap-1"><input className="!w-16 !min-h-[36px] !px-1" inputMode="decimal" aria-label={`Quantitat habitual de ${p.name}`} value={qtyFor(p)} onChange={(e) => setQuantities((old) => ({ ...old, [p.id!]: e.target.value }))} /><span className="text-xs text-mute">{p.habitualUnit || p.unit}</span></div>
+            <button type="button" className="btn-p !min-h-[36px] !px-2" onClick={() => void addOne(p)}>＋</button>
+          </div>)}
+        </div>
+        {selected.size > 0 && <button type="button" className="btn-p mt-3 w-full" onClick={() => void addSelected()}>Afegeix els {selected.size} seleccionats</button>}
+      </>)}
+    </section>
+  )
+}
 
 function ShoppingMode({ listName, items, stores, cats, onClose, onConfirm }: {
   listName: string

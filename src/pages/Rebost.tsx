@@ -11,6 +11,7 @@ export default function Rebost() {
   const products = useLiveQuery(() => db.products.toArray(), [], [] as Product[])
   const movements = useLiveQuery(() => db.movements.toArray(), [], [] as Movement[])
   const locs = useLiveQuery(() => db.locations.toArray(), [], [])
+  const stores = useLiveQuery(() => db.stores.filter((s) => !s.archived).toArray(), [], [])
   const cats = useLiveQuery(() => db.categories.filter((c) => !c.archived).toArray(), [], [])
   const settings = useLiveQuery(getSettings, [], DEFAULT_SETTINGS)
   const [q, setQ] = useState('')
@@ -80,6 +81,7 @@ export default function Rebost() {
                       </div>
                     </button>
                     <div className="flex items-center gap-1">
+                      <button type="button" className="btn-g !min-w-[36px] !px-1 text-lg" title={p.favorite ? "Treu dels productes habituals" : "Marca com a producte habitual"} aria-label={p.favorite ? "Treu dels habituals" : "Afegeix als habituals"} onClick={() => db.products.update(p.id!, { favorite: !p.favorite, habitualQty: p.habitualQty ?? 1, habitualUnit: p.habitualUnit ?? p.unit })}>{p.favorite ? "★" : "☆"}</button>
                       <button className="btn-s !min-w-[40px] !px-0" onClick={() => adjustStock(p.id!, -1, 'consum')} disabled={p.qty <= 0} aria-label={`Consumeix una unitat de ${p.name}`}>−</button>
                       <div className="w-14 text-center text-sm font-semibold">{p.qty}<div className="text-[10px] font-normal text-mute">{p.unit}</div></div>
                       <button className="btn-s !min-w-[40px] !px-0" onClick={() => adjustStock(p.id!, 1, 'manual')} aria-label={`Afegeix una unitat de ${p.name}`}>＋</button>
@@ -91,13 +93,13 @@ export default function Rebost() {
           </section>
         )
       })}
-      {edit && <ProductForm initial={edit} locs={locs} cats={cats} onClose={() => setEdit(null)} />}
+      {edit && <ProductForm initial={edit} locs={locs} cats={cats} stores={stores} onClose={() => setEdit(null)} />}
       {detail && <Detail p={products.find((x) => x.id === detail.id) ?? detail} onClose={() => setDetail(null)} onEdit={(p) => { setDetail(null); setEdit(p) }} />}
     </>
   )
 }
 
-function ProductForm({ initial, locs, cats, onClose }: { initial: Partial<Product>; locs: { id?: number; name: string }[]; cats: { id?: number; name: string; icon: string }[]; onClose: () => void }) {
+function ProductForm({ initial, locs, cats, stores, onClose }: { initial: Partial<Product>; locs: { id?: number; name: string }[]; cats: { id?: number; name: string; icon: string }[]; stores: { id?: number; name: string }[]; onClose: () => void }) {
   const [f, setF] = useState<Partial<Product>>(initial)
   const [more, setMore] = useState(!!(initial.id))
   const set = (k: keyof Product, v: unknown) => setF((x) => ({ ...x, [k]: v }))
@@ -136,6 +138,7 @@ function ProductForm({ initial, locs, cats, onClose }: { initial: Partial<Produc
             <Field label="Quantitat mínima"><input inputMode="decimal" value={f.min ?? ''} onChange={(e) => set('min', e.target.value ? num(e.target.value) : undefined)} /></Field>
           </div>
           <Field label="Preu de compra (€)"><input inputMode="decimal" value={f.price ?? ''} onChange={(e) => set('price', e.target.value ? num(e.target.value) : undefined)} /></Field>
+          <div className="rounded-xl border border-line p-3 space-y-2"><label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={!!f.favorite} onChange={(e) => { set("favorite", e.target.checked); if (e.target.checked) { set("habitualQty", f.habitualQty ?? 1); set("habitualUnit", f.habitualUnit ?? f.unit ?? "ud") } }} />Producte habitual / favorit</label>{f.favorite && <><div className="grid grid-cols-2 gap-2"><Field label="Quantitat habitual"><input inputMode="decimal" value={f.habitualQty ?? 1} onChange={(e) => set("habitualQty", Math.max(0.001, num(e.target.value)))} /></Field><Field label="Unitat"><select value={f.habitualUnit ?? f.unit ?? "ud"} onChange={(e) => set("habitualUnit", e.target.value)}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></Field></div><Field label="Establiment preferit"><select value={f.preferredStoreId ?? ""} onChange={(e) => set("preferredStoreId", e.target.value ? Number(e.target.value) : undefined)}><option value="">Sense preferència</option>{stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field></>}</div>
           <Field label="Notes"><textarea rows={2} value={f.notes ?? ''} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>}
         <button className="btn-p w-full" onClick={save} disabled={!f.name?.trim()}>Desa</button>
