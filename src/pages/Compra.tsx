@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, UNITS, addProduct, findProduct, type ListItem, type Purchase } from '../db'
 import { priceObservations } from '../stats'
-import { Sheet, Field, Empty, Title, num } from '../ui'
+import { Sheet, Field, Empty, Title, ProductVisual, num } from '../ui'
 import { eur } from '../talkual'
 
 export default function Compra() {
@@ -54,6 +54,7 @@ export default function Compra() {
               <ul className="space-y-2">{xs.map((i) => (
                 <li key={i.id} className="card flex items-center gap-3 !p-3">
                   <input type="checkbox" checked={!!i.bought} onChange={(e) => db.listItems.update(i.id!, { bought: e.target.checked })} aria-label={`Marca ${i.name} com a comprat`} />
+                  <ProductVisual photo={i.photo} emoji={i.emoji} size="sm" />
                   <div className={`min-w-0 flex-1 ${i.bought ? 'line-through opacity-50' : ''}`}>
                     <div className="truncate font-medium">{i.name}</div>
                     <div className="text-xs text-mute">{i.qty} {i.unit}{i.note ? ` · ${i.note}` : ''}</div>
@@ -86,6 +87,8 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
     if (!f.name?.trim()) return
     if (f.estPrice !== undefined && (!Number.isFinite(f.estPrice) || f.estPrice < 0)) { alert('El preu estimat ha de ser 0 € o superior.'); return }
     let item = { ...f, listId, name: f.name.trim() } as ListItem
+    const matchedProduct = await findProduct(item.name, item.unit)
+    if (matchedProduct) item = { ...item, categoryId: item.categoryId ?? matchedProduct.categoryId, photo: item.photo ?? matchedProduct.photo, emoji: item.emoji ?? matchedProduct.emoji }
     const stores_ = await db.stores.toArray()
     const reviewed = purchases.filter((p) => p.status === 'Revisat' && p.lines.some((line) => line.name.trim().toLowerCase() === item.name.toLowerCase() && line.unit === item.unit && p.storeId))
     if (item.storeId === undefined && !defaultStoreId && reviewed.length) {
@@ -115,7 +118,7 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
       <div className="space-y-3">
         <Field label="Producte (pots escriure'n un de nou)"><input autoFocus list="habituals" value={f.name ?? ''} onChange={(e) => { set('name', e.target.value); setSelectedProductId('') }} placeholder="Escriu el nom del producte" /></Field>
         <datalist id="habituals">{suggestions.map((p) => <option key={p.id} value={p.name} />)}</datalist>
-        <Field label="O selecciona un producte del rebost"><select value={selectedProductId} onChange={(e) => { const id = e.target.value ? Number(e.target.value) : ''; setSelectedProductId(id); const product = suggestions.find((p) => p.id === id); if (product) setF((current) => ({ ...current, name: product.name, unit: product.unit, categoryId: product.categoryId, estPrice: product.price })) }}><option value="">— Tria un producte —</option>{suggestions.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.qty} {p.unit} disponibles</option>)}</select></Field>
+        <Field label="O selecciona un producte del rebost"><select value={selectedProductId} onChange={(e) => { const id = e.target.value ? Number(e.target.value) : ''; setSelectedProductId(id); const product = suggestions.find((p) => p.id === id); if (product) setF((current) => ({ ...current, name: product.name, unit: product.unit, categoryId: product.categoryId, estPrice: product.price, photo: product.photo, emoji: product.emoji })) }}><option value="">— Tria un producte —</option>{suggestions.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.qty} {p.unit} disponibles</option>)}</select></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Quantitat"><input inputMode="decimal" value={f.qty ?? ''} onChange={(e) => set('qty', num(e.target.value))} /></Field>
           <Field label="Unitat"><select value={f.unit} onChange={(e) => set('unit', e.target.value)}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></Field>
@@ -138,8 +141,8 @@ function ConfirmBuy({ items, onClose }: { items: ListItem[]; onClose: () => void
   const run = async () => {
     for (const i of items.filter((x) => pick.has(x.id!))) {
       const have = await findProduct(i.name, i.unit)
-      if (have) { await db.products.update(have.id!, { qty: have.qty + i.qty }); await db.movements.add({ productId: have.id!, ts: new Date().toISOString(), delta: i.qty, kind: 'compra', ref: `llista:${i.id}` }) }
-      else await addProduct({ name: i.name, qty: i.qty, unit: i.unit, categoryId: i.categoryId, locationId: loc, price: i.estPrice }, 'compra', `llista:${i.id}`)
+      if (have) { await db.products.update(have.id!, { qty: have.qty + i.qty, photo: have.photo ?? i.photo, emoji: have.emoji ?? i.emoji }); await db.movements.add({ productId: have.id!, ts: new Date().toISOString(), delta: i.qty, kind: 'compra', ref: `llista:${i.id}` }) }
+      else await addProduct({ name: i.name, qty: i.qty, unit: i.unit, categoryId: i.categoryId, locationId: loc, price: i.estPrice, photo: i.photo, emoji: i.emoji }, 'compra', `llista:${i.id}`)
     }
     await db.listItems.bulkDelete(items.map((i) => i.id!))
     setDone(true)

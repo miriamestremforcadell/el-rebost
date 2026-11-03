@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, addProduct, adjustStock, UNITS, getSettings, DEFAULT_SETTINGS, type Product } from '../db'
-import { Sheet, Field, Empty, Title, num } from '../ui'
+import { Sheet, Field, Empty, Title, ProductVisual, num } from '../ui'
 import { todayISO, parseISO, formatDate } from '../talkual'
 
 export const daysTo = (iso?: string) => iso ? Math.round((parseISO(iso).getTime() - parseISO(todayISO()).getTime()) / 86400000) : undefined
@@ -42,7 +42,7 @@ export default function Rebost() {
         let added = 0
         for (const p of lowProducts) {
           if (existing.some((item) => item.name.trim().toLocaleLowerCase('ca') === p.name.trim().toLocaleLowerCase('ca') && item.unit === p.unit && !item.bought)) continue
-          await db.listItems.add({ listId: list.id!, name: p.name, qty: Math.max(1, (p.min ?? 1) - p.qty), unit: p.unit, categoryId: p.categoryId })
+          await db.listItems.add({ listId: list.id!, name: p.name, qty: Math.max(1, (p.min ?? 1) - p.qty), unit: p.unit, categoryId: p.categoryId, photo: p.photo, emoji: p.emoji })
           added++
         }
         alert(added ? `S'han afegit ${added} productes a «${list.name}».` : 'Tots els productes per reposar ja són a la llista de compra.')
@@ -59,6 +59,7 @@ export default function Rebost() {
                 const d = daysTo(p.expiry)
                 return (
                   <li key={p.id} className="card flex items-center gap-3 !p-3">
+                    <ProductVisual photo={p.photo} emoji={p.emoji} fallback={cats.find((c) => c.id === p.categoryId)?.icon} />
                     <button className="min-w-0 flex-1 text-left" onClick={() => setDetail(p)}>
                       <div className="truncate font-medium">{p.name}{p.brand && <span className="text-mute"> · {p.brand}</span>}</div>
                       <div className="mt-0.5 flex flex-wrap gap-1 text-xs text-mute">
@@ -108,6 +109,7 @@ function ProductForm({ initial, locs, cats, onClose }: { initial: Partial<Produc
           <Field label="Quantitat"><input inputMode="decimal" value={f.qty ?? ''} onChange={(e) => set('qty', num(e.target.value))} /></Field>
           <Field label="Unitat"><select value={f.unit} onChange={(e) => set('unit', e.target.value)}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></Field>
         </div>
+        <div className="flex items-center gap-3"><ProductVisual photo={f.photo} emoji={f.emoji} size="lg" /><div className="min-w-0 flex-1"><Field label="Imatge del producte"><input type="file" accept="image/*" capture="environment" className="text-sm" onChange={(e) => { const file=e.target.files?.[0]; if(!file || !file.type.startsWith("image/")) return; const reader=new FileReader(); reader.onload=()=>{ const img=new Image(); img.onload=()=>{ const scale=Math.min(1,640/Math.max(img.width,img.height)); const canvas=document.createElement("canvas"); canvas.width=Math.max(1,Math.round(img.width*scale)); canvas.height=Math.max(1,Math.round(img.height*scale)); const ctx=canvas.getContext("2d"); if(ctx){ctx.drawImage(img,0,0,canvas.width,canvas.height);canvas.toBlob(blob=>{if(blob)set("photo",blob)},"image/jpeg",0.78)} }; img.src=String(reader.result) }; reader.readAsDataURL(file) }} /></Field><p className="mt-1 text-xs text-mute">Fes una foto o tria’n una de la galeria.</p></div></div>{f.photo && <button type="button" className="btn-g" onClick={()=>set("photo",undefined)}>Treu la foto</button>}<Field label="O tria un emoji"><div className="flex flex-wrap gap-2">{["🍎","🥬","🍗","🐟","🥚","🥖","🍝","🥫","🧀","🥣","🧊","💧","🧽","🧼","🧴","🧻","🧺","🐾","☕","🍫","🍚","🥛","🫒","📦"].map(emoji=><button key={emoji} type="button" onClick={()=>set("emoji",emoji)} className={`rounded-lg border p-2 text-xl ${f.emoji===emoji?"border-brand bg-page":"border-line"}`}>{emoji}</button>)}</div></Field>
         <Field label="Ubicació"><select value={f.locationId ?? ''} onChange={(e) => set('locationId', e.target.value ? Number(e.target.value) : undefined)}><option value="">—</option>{locs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></Field>
         <button className="btn-g" onClick={() => setMore(!more)}>{more ? 'Menys camps' : 'Més camps (opcionals)'}</button>
         {more && <div className="space-y-3">
@@ -152,7 +154,7 @@ function Detail({ p, onClose, onEdit }: { p: Product; onClose: () => void; onEdi
   const addToList = async () => {
     let l = lists[0]
     if (!l) { const id = (await db.lists.add({ name: 'La compra', createdAt: new Date().toISOString() })) as number; l = { id, name: 'La compra', createdAt: '' } }
-    await db.listItems.add({ listId: l.id!, name: p.name, qty: Math.max(1, (p.min ?? 1) * 2 - p.qty), unit: p.unit, categoryId: p.categoryId })
+    await db.listItems.add({ listId: l.id!, name: p.name, qty: Math.max(1, (p.min ?? 1) * 2 - p.qty), unit: p.unit, categoryId: p.categoryId, photo: p.photo, emoji: p.emoji })
     setMsg(`Afegit a «${l.name}».`)
   }
   return (

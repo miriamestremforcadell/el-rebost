@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
@@ -25,3 +25,5 @@ export function Stat({ label, value, sub, tone }: { label: string; value: ReactN
 export function useAutofocus<T extends HTMLElement>() { const r = useRef<T>(null); useEffect(() => { r.current?.focus() }, []); return r }
 export const num = (s: string) => { const n = parseFloat(s.replace(',', '.')); return Number.isFinite(n) ? n : 0 }
 export const uid = () => Math.random().toString(36).slice(2, 9)
+
+export function ProductVisual({ photo, emoji, fallback = "📦", size = "md" }: { photo?: Blob; emoji?: string; fallback?: string; size?: "sm" | "md" | "lg" }) { const [src,setSrc]=useState(""); useEffect(()=>{ if(!photo){setSrc("");return} const url=URL.createObjectURL(photo);setSrc(url);return ()=>URL.revokeObjectURL(url)},[photo]); const cls=size==="lg"?"h-24 w-24 text-4xl":size==="sm"?"h-10 w-10 text-xl":"h-12 w-12 text-2xl"; return <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-page ${cls}`} aria-hidden="true">{src?<img src={src} alt="" className="h-full w-full object-cover"/>:<span>{emoji||fallback}</span>}</div> }
