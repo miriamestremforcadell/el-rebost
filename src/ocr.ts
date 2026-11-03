@@ -117,3 +117,32 @@ export async function readTicket(file: File, onProgress?: (progress: number) => 
   }
   return parseText(parts.join('\n'), confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0)
 }
+
+
+export interface RecipeOcrResult { text: string; confidence: number }
+
+/** Llegeix captures de receptes al navegador. Les imatges no s'envien a cap API. */
+export async function readRecipeImages(files: File[], onProgress?: (progress: number) => void): Promise<RecipeOcrResult> {
+  if (!files.length) throw new Error('Selecciona almenys una captura de pantalla.')
+  if (files.length > 8) throw new Error('Pots importar fins a 8 captures alhora.')
+  if (files.some((file) => !file.type.startsWith('image/'))) throw new Error('Selecciona fitxers d’imatge (JPG, PNG o WEBP).')
+  if (files.some((file) => file.size > 20 * 1024 * 1024)) throw new Error('Cada imatge ha de pesar menys de 20 MB.')
+  await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js')
+  if (!window.Tesseract) throw new Error('No s’ha pogut iniciar el motor OCR.')
+  const parts: string[] = []
+  const confidences: number[] = []
+  for (let i = 0; i < files.length; i++) {
+    const result = await window.Tesseract.recognize(files[i], 'cat+spa+eng', {
+      logger: (m: { status?: string; progress?: number }) => {
+        if (m.status === 'recognizing text' && typeof m.progress === 'number') onProgress?.((i + m.progress) / files.length)
+      },
+    })
+    parts.push(result.data.text)
+    confidences.push(result.data.confidence)
+    onProgress?.((i + 1) / files.length)
+  }
+  return {
+    text: parts.map((part, i) => files.length > 1 ? `[Captura ${i + 1}]\n${part}` : part).join('\n\n').trim(),
+    confidence: confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0,
+  }
+}
