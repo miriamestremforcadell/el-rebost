@@ -35,6 +35,32 @@ export interface RecipeIngredientMatch { ingredient: RecipeIngredient; available
 export interface RecipeMatch { recipe: Recipe; matches: RecipeIngredientMatch[]; availableCount: number; missingCount: number; expiringCount: number; score: number }
 
 const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('ca').trim();
+export function quantityInUnit(qty: number, from: string, to: string): number | undefined {
+  if (from === to) return qty;
+  const factor: Record<string, { dimension: string; value: number }> = {
+    g:{dimension:'massa',value:1}, kg:{dimension:'massa',value:1000},
+    ml:{dimension:'volum',value:1}, l:{dimension:'volum',value:1000},
+  };
+  const a=factor[from], b=factor[to];
+  return a && b && a.dimension===b.dimension ? qty*a.value/b.value : undefined;
+}
+
+export function missingIngredientsForRecipes(recipes: Recipe[], products: {name:string;qty:number;unit:string}[]) {
+  const required = new Map<string, RecipeIngredient>();
+  for (const recipe of recipes) for (const ingredient of recipe.ingredients) {
+    const key=normalize(ingredient.name)+'|'+ingredient.unit;
+    const previous=required.get(key);
+    required.set(key,{...ingredient,qty:(previous?.qty??0)+ingredient.qty});
+  }
+  return [...required.values()].flatMap((ingredient) => {
+    const names=[ingredient.name,...(ingredient.aliases??[])].map(normalize);
+    const product=products.find((p)=>p.qty>0 && names.some((n)=>normalize(p.name)===n || normalize(p.name).includes(n) || n.includes(normalize(p.name))));
+    const available=product ? quantityInUnit(product.qty,product.unit,ingredient.unit) : undefined;
+    const missing=available===undefined ? ingredient.qty : Math.max(0,ingredient.qty-available);
+    return missing>0 ? [{name:ingredient.name,qty:missing,unit:ingredient.unit}] : [];
+  });
+}
+
 export function matchRecipe(recipe: Recipe, products: { id?: number; name: string; qty: number; unit: string; expiry?: string }[], expiringIds: Set<number> = new Set()): RecipeMatch {
   const matches = recipe.ingredients.map((ingredient) => {
     const names = [ingredient.name, ...(ingredient.aliases ?? [])].map(normalize);
