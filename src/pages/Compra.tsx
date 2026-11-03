@@ -54,7 +54,7 @@ export default function Compra() {
               <ul className="space-y-2">{xs.map((i) => (
                 <li key={i.id} className="card flex items-center gap-3 !p-3">
                   <input type="checkbox" checked={!!i.bought} onChange={(e) => db.listItems.update(i.id!, { bought: e.target.checked })} aria-label={`Marca ${i.name} com a comprat`} />
-                  <ProductVisual photo={i.photo} emoji={i.emoji} size="sm" />
+                  <ProductVisual photo={i.photo} emoji={i.emoji} fallback={cats.find((c) => c.id === i.categoryId)?.icon} size="sm" />
                   <div className={`min-w-0 flex-1 ${i.bought ? 'line-through opacity-50' : ''}`}>
                     <div className="truncate font-medium">{i.name}</div>
                     <div className="text-xs text-mute">{i.qty} {i.unit}{i.note ? ` · ${i.note}` : ''}</div>
