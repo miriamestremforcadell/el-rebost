@@ -100,8 +100,8 @@ export default function Compra() {
   const [group, setGroup] = useState<'categoria' | 'establiment' | 'seccio'>('seccio')
   const [storeFilter, setStoreFilter] = useState<number | 'all' | 'none'>('all')
   const visibleItems = items.filter((i) => storeFilter === 'all' || (storeFilter === 'none' ? !i.storeId : i.storeId === storeFilter))
-  const pendingEstimate = visibleItems.filter((i) => !i.bought).reduce((s, i) => s + (i.estPrice ?? 0) * i.qty, 0)
-  const spent = (cur?.spentTotal ?? 0) + visibleItems.filter((i) => i.bought).reduce((s, i) => s + (i.paidPrice ?? i.estPrice ?? 0) * i.qty, 0)
+  const pendingEstimate = items.filter((i) => !i.bought).reduce((s, i) => s + (i.estPrice ?? 0) * i.qty, 0)
+  const spent = (cur?.spentTotal ?? 0) + items.filter((i) => i.bought).reduce((s, i) => s + (i.paidPrice ?? i.estPrice ?? 0) * i.qty, 0)
   const totalPlan = pendingEstimate + spent
   const budget = cur?.budget ?? 0
   const groups = new Map<string, ListItem[]>()
@@ -123,7 +123,7 @@ export default function Compra() {
       {cur && (
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-            <div className="min-w-0"><div className="text-mute">Pendent estimat: <b className="text-ink">{eur(pendingEstimate)}</b> · Comprat: <b className="text-ink">{eur(spent)}</b></div><div className="text-xs text-mute">Total previst: {eur(totalPlan)}{budget > 0 ? ' · Pressupost: ' + eur(budget) : ''}</div></div>
+            <div className="min-w-0"><div className="text-mute">Pendent estimat: <b className="text-ink">{eur(pendingEstimate)}</b> · Comprat (real o estimat): <b className="text-ink">{eur(spent)}</b></div><div className="text-xs text-mute">Total previst: {eur(totalPlan)}{budget > 0 ? ' · Pressupost: ' + eur(budget) : ''}</div></div>
             <select className="!w-auto" value={group} onChange={(e) => setGroup(e.target.value as 'categoria' | 'establiment' | 'seccio')} aria-label="Agrupa per"><option value="seccio">Per secció</option><option value="categoria">Per categoria</option><option value="establiment">Per establiment</option></select>
           </div>
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-page p-3"><label className="text-sm font-medium" htmlFor="list-budget">Pressupost de la llista (€)</label><input id="list-budget" className="!w-28 !min-h-[36px]" inputMode="decimal" type="number" min="0" step="0.01" value={budgetInput} placeholder="Sense límit" onChange={(e) => setBudgetInput(e.target.value)} onBlur={() => { const v=budgetInput.trim().replace(',', '.'); const n=v === '' ? undefined : Number(v); if (n === undefined || (Number.isFinite(n) && n >= 0)) db.lists.update(cur.id!, { budget: n }) }} /><span className="text-xs text-mute">{budget > 0 ? Math.round(totalPlan / budget * 100) + '% del pressupost' : 'Sense pressupost definit'}</span>{budget > 0 && <div className="h-2 w-full overflow-hidden rounded-full bg-line"><div className={`h-full ${totalPlan > budget ? 'bg-bad' : totalPlan >= budget * .8 ? 'bg-warn' : 'bg-brand'}`} style={{ width: `${Math.min(100, totalPlan / budget * 100)}%` }} /></div>}{budget > 0 && totalPlan > budget && <p className="w-full text-xs font-medium text-bad">La compra supera el pressupost en {eur(totalPlan - budget)}.</p>}</div>
