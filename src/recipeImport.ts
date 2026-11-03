@@ -12,7 +12,7 @@ function parseIngredient(line: string): RecipeIngredient | null {
   if (!value || value.length > 140 || TITLE_SKIP.test(value)) return null
   const match = value.match(/^([\d]+(?:[.,]\d+)?|\d+\/\d+|½|¼|¾)\s*(kg|g|mg|ml|cl|l|oz|lb|cups?|tbsps?|tbsp|tsps?|tsp|cullerades?|culleradetes?|tasses?|latas?|latas|latas?\s+de|ud(?:s)?\.?|units?|dientes?|granos?|pizcas?|punts?)?\s*(?:de\s+)?(.+)$/i)
   if (!match) {
-    if (/^(?:to taste|al gusto|al gust|a gusto|a gust|salt|sal|pepper|pebre|pimienta|water|aigua|agua)$/i.test(value)) return { name: value, qty: 0, unit: 'a gust' }
+    if (/^(?:to taste|al gusto|al gust|a gusto|a gust|salt(?: to taste)?|sal(?: al gust)?|pepper|pebre|pimienta|water|aigua|agua)$/i.test(value)) return { name: value, qty: 0, unit: 'a gust' }
     return { name: value, qty: 0, unit: '—' }
   }
   let qty = match[1] === '½' ? 0.5 : match[1] === '¼' ? 0.25 : match[1] === '¾' ? 0.75 : match[1].includes('/') ? Number(match[1].split('/')[0]) / Number(match[1].split('/')[1]) : Number(match[1].replace(',', '.'))
