@@ -27,7 +27,7 @@ export default function Compra() {
   }
   return (
     <>
-      <Title right={<button className="btn-p" onClick={() => setAdding(true)} disabled={!cur}>＋ Producte</button>}>Compra</Title>
+      <Title right={<button type="button" className="btn-p" onClick={() => setAdding(true)} disabled={!cur}>＋ Producte</button>}>Compra</Title>
       <div className="mb-3 flex gap-2 overflow-x-auto">
         {lists.map((l) => <button key={l.id} onClick={() => { setSel(l.id); setStoreFilter('all') }} className={cur?.id === l.id ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'}>{l.name}</button>)}
       </div>
@@ -79,14 +79,12 @@ export default function Compra() {
 
 function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: { listId: number; cats: { id?: number; name: string }[]; stores: { id?: number; name: string }[]; purchases: Purchase[]; defaultStoreId?: number; onClose: () => void }) {
   const [f, setF] = useState<Partial<ListItem>>({ qty: 1, unit: 'ud', storeId: defaultStoreId })
-  const [warn, setWarn] = useState<string | null>(null)
+  const [selectedProductId, setSelectedProductId] = useState<number | ''>('')
   const set = (k: keyof ListItem, v: unknown) => setF((x) => ({ ...x, [k]: v }))
-  const suggestions = useLiveQuery(() => db.products.toArray(), [], [])
-  const save = async (force = false) => {
+  const suggestions = useLiveQuery(() => db.products.orderBy('name').toArray(), [], [])
+  const save = async () => {
     if (!f.name?.trim()) return
     if (f.estPrice !== undefined && (!Number.isFinite(f.estPrice) || f.estPrice < 0)) { alert('El preu estimat ha de ser 0 € o superior.'); return }
-    const have = await findProduct(f.name)
-    if (have && have.qty > 0 && !force) { setWarn(`Ja tens ${have.qty} ${have.unit} de «${have.name}» a casa. Vols afegir-ne més igualment?`); return }
     let item = { ...f, listId, name: f.name.trim() } as ListItem
     const stores_ = await db.stores.toArray()
     const reviewed = purchases.filter((p) => p.status === 'Revisat' && p.lines.some((line) => line.name.trim().toLowerCase() === item.name.toLowerCase() && line.unit === item.unit && p.storeId))
@@ -103,14 +101,21 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
       const last = available[available.length - 1]
       if (last) { item = { ...item, estPrice: last.unitPrice, estSource: storeName && last.storeName === storeName ? 'última compra' : 'altre establiment' } }
     } else item.estSource = 'manual'
-    await db.listItems.add(item)
+    const normalizedName = item.name.trim().toLocaleLowerCase()
+    const existing = (await db.listItems.where('listId').equals(listId).toArray()).find((row) => !row.bought && row.name.trim().toLocaleLowerCase() === normalizedName && row.unit === item.unit)
+    if (existing?.id !== undefined) {
+      await db.listItems.update(existing.id, { qty: Math.round((existing.qty + item.qty) * 1000) / 1000, ...(item.estPrice !== undefined ? { estPrice: item.estPrice, estSource: item.estSource } : {}), ...(item.storeId !== undefined ? { storeId: item.storeId } : {}) })
+    } else {
+      await db.listItems.add(item)
+    }
     onClose()
   }
   return (
     <Sheet title="Afegeix a la llista" onClose={onClose}>
       <div className="space-y-3">
-        <Field label="Producte"><input autoFocus list="habituals" value={f.name ?? ''} onChange={(e) => { set('name', e.target.value); setWarn(null) }} /></Field>
+        <Field label="Producte (pots escriure'n un de nou)"><input autoFocus list="habituals" value={f.name ?? ''} onChange={(e) => { set('name', e.target.value); setSelectedProductId('') }} placeholder="Escriu el nom del producte" /></Field>
         <datalist id="habituals">{suggestions.map((p) => <option key={p.id} value={p.name} />)}</datalist>
+        <Field label="O selecciona un producte del rebost"><select value={selectedProductId} onChange={(e) => { const id = e.target.value ? Number(e.target.value) : ''; setSelectedProductId(id); const product = suggestions.find((p) => p.id === id); if (product) setF((current) => ({ ...current, name: product.name, unit: product.unit, categoryId: product.categoryId, estPrice: product.price })) }}><option value="">— Tria un producte —</option>{suggestions.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.qty} {p.unit} disponibles</option>)}</select></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Quantitat"><input inputMode="decimal" value={f.qty ?? ''} onChange={(e) => set('qty', num(e.target.value))} /></Field>
           <Field label="Unitat"><select value={f.unit} onChange={(e) => set('unit', e.target.value)}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></Field>
@@ -119,8 +124,7 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
         </div>
         <Field label="Preu estimat per unitat (€, opcional)"><input inputMode="decimal" value={f.estPrice ?? ''} onChange={(e) => set('estPrice', e.target.value ? num(e.target.value) : undefined)} /></Field>
         <Field label="Notes"><input value={f.note ?? ''} onChange={(e) => set('note', e.target.value)} /></Field>
-        {warn && <div className="card border-warn/50 text-sm"><p className="mb-2">{warn}</p><div className="flex gap-2"><button className="btn-p" onClick={() => save(true)}>Afegeix igualment</button><button className="btn-s" onClick={onClose}>Cancel·la</button></div></div>}
-        {!warn && <button className="btn-p w-full" onClick={() => save()}>Afegeix</button>}
+        <button type="button" className="btn-p w-full" onClick={() => save()}>Afegeix a la llista</button>
       </div>
     </Sheet>
   )
