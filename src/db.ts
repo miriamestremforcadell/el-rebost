@@ -10,7 +10,7 @@ export interface Product {
 }
 export type MovementKind = 'compra' | 'consum' | 'correcció' | 'malmès' | 'recepció' | 'manual'
 export interface Movement { id?: number; productId: number; ts: string; delta: number; kind: MovementKind; ref?: string; note?: string }
-export interface ShopList { id?: number; name: string; createdAt: string; budget?: number }
+export interface ShopList { id?: number; name: string; createdAt: string; budget?: number; spentTotal?: number }
 export interface ListItem {
   id?: number; listId: number; name: string; qty: number; unit: string; note?: string; estPrice?: number
   estSource?: 'última compra' | 'altre establiment' | 'manual'; storeId?: number; categoryId?: number; bought?: boolean; photo?: Blob; emoji?: string; section?: string; paidPrice?: number; brand?: string; barcode?: string
