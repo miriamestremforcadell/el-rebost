@@ -254,6 +254,11 @@ export async function exportAll() {
         ...row,
         ...(row.photo instanceof Blob ? { photo: await blobToBackup(row.photo) } : {}),
       })))
+    } else if (t === 'listItems') {
+      out[t] = await Promise.all(rows.map(async (row) => ({
+        ...row,
+        ...(row.photo instanceof Blob ? { photo: await blobToBackup(row.photo) } : {}),
+      })))
     } else if (t === 'docs') {
       out[t] = await Promise.all(rows.map(async (row) => ({
         ...row,
@@ -284,6 +289,8 @@ export async function importAll(raw: unknown): Promise<{ products: number; purch
   for (const t of BACKUP_TABLES) {
     const rows = (Array.isArray(d[t]) ? d[t] : []) as Record<string, unknown>[]
     if (t === 'products') {
+      normalized[t] = rows.map((row) => ({ ...row, ...(backupToBlob(row.photo) ? { photo: backupToBlob(row.photo) } : {}) }))
+    } else if (t === 'listItems') {
       normalized[t] = rows.map((row) => ({ ...row, ...(backupToBlob(row.photo) ? { photo: backupToBlob(row.photo) } : {}) }))
     } else if (t === 'docs') {
       normalized[t] = rows.map((row) => {

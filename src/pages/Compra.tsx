@@ -107,7 +107,7 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
     const normalizedName = item.name.trim().toLocaleLowerCase()
     const existing = (await db.listItems.where('listId').equals(listId).toArray()).find((row) => !row.bought && row.name.trim().toLocaleLowerCase() === normalizedName && row.unit === item.unit)
     if (existing?.id !== undefined) {
-      await db.listItems.update(existing.id, { qty: Math.round((existing.qty + item.qty) * 1000) / 1000, ...(item.estPrice !== undefined ? { estPrice: item.estPrice, estSource: item.estSource } : {}), ...(item.storeId !== undefined ? { storeId: item.storeId } : {}) })
+      await db.listItems.update(existing.id, { qty: Math.round((existing.qty + item.qty) * 1000) / 1000, ...(item.estPrice !== undefined ? { estPrice: item.estPrice, estSource: item.estSource } : {}), ...(item.storeId !== undefined ? { storeId: item.storeId } : {}), ...(item.photo ? { photo: item.photo } : {}), ...(item.emoji ? { emoji: item.emoji } : {}) })
     } else {
       await db.listItems.add(item)
     }
@@ -125,6 +125,9 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
           <Field label="Categoria"><select value={f.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value ? Number(e.target.value) : undefined)}><option value="">—</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
           <Field label="Establiment"><select value={f.storeId ?? ''} onChange={(e) => set('storeId', e.target.value ? Number(e.target.value) : undefined)}><option value="">—</option>{stores.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         </div>
+        <div className="flex items-center gap-3"><ProductVisual photo={f.photo} emoji={f.emoji} size="lg" /><div className="min-w-0 flex-1"><Field label="Foto (opcional)"><input type="file" accept="image/*" capture="environment" className="text-sm" onChange={(e) => { const file=e.target.files?.[0]; if(!file || !file.type.startsWith("image/")) return; const reader=new FileReader(); reader.onload=()=>{ const img=new Image(); img.onload=()=>{ const scale=Math.min(1,640/Math.max(img.width,img.height)); const canvas=document.createElement("canvas"); canvas.width=Math.max(1,Math.round(img.width*scale)); canvas.height=Math.max(1,Math.round(img.height*scale)); const ctx=canvas.getContext("2d"); if(ctx){ctx.drawImage(img,0,0,canvas.width,canvas.height);canvas.toBlob(blob=>{if(blob){set("photo",blob);set("emoji",undefined)}},"image/jpeg",0.78)} }; img.src=String(reader.result) }; reader.readAsDataURL(file) }} /></Field></div></div>
+        <Field label="O tria un emoji"><div className="flex flex-wrap gap-2">{["🍎","🥬","🍗","🐟","🥚","🥖","🍝","🥫","🧀","🥣","🧊","💧","🧽","🧼","🧴","🧻","🧺","🐾","☕","🍫","🍚","🥛","🫒","📦"].map(emoji=><button key={emoji} type="button" onClick={()=>{set("emoji",emoji);set("photo",undefined)}} className={`rounded-lg border p-2 text-xl ${f.emoji===emoji?"border-brand bg-page":"border-line"}`}>{emoji}</button>)}</div></Field>
+        {(f.photo || f.emoji) && <button type="button" className="btn-g" onClick={()=>{set("photo",undefined);set("emoji",undefined)}}>Treu la imatge</button>}
         <Field label="Preu estimat per unitat (€, opcional)"><input inputMode="decimal" value={f.estPrice ?? ''} onChange={(e) => set('estPrice', e.target.value ? num(e.target.value) : undefined)} /></Field>
         <Field label="Notes"><input value={f.note ?? ''} onChange={(e) => set('note', e.target.value)} /></Field>
         <button type="button" className="btn-p w-full" onClick={() => save()}>Afegeix a la llista</button>
