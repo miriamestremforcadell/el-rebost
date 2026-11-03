@@ -231,3 +231,26 @@ describe('control intel·ligent del rebost', () => {
     expect(result.replenishment[0]?.reason).toContain('Estoc aproximat')
   })
 })
+
+describe('receptes i aprofitament', () => {
+  it('prioritza receptes que aprofiten ingredients propers a caducar', async () => {
+    const { RECIPES, matchRecipe } = await import('./recipes')
+    const recipe = RECIPES.find((r) => r.id === 'truita-carbasso')!
+    const products = [
+      { id: 1, name: 'Carbassó', qty: 2, unit: 'ud', expiry: '2026-11-04' },
+      { id: 2, name: 'Ous', qty: 4, unit: 'ud' },
+      { id: 3, name: 'Ceba', qty: 1, unit: 'ud' },
+    ]
+    const result = matchRecipe(recipe, products, new Set([1]))
+    expect(result.missingCount).toBe(0)
+    expect(result.expiringCount).toBe(1)
+    expect(result.score).toBeGreaterThan(matchRecipe(recipe, products).score)
+  })
+  it('detecta ingredients que falten i quantitats parcials', async () => {
+    const { RECIPES, matchRecipe } = await import('./recipes')
+    const recipe = RECIPES.find((r) => r.id === 'truita-carbasso')!
+    const result = matchRecipe(recipe, [{ id: 1, name: 'Carbassó', qty: 0.5, unit: 'ud' }])
+    expect(result.missingCount).toBe(3)
+    expect(result.matches.find((x) => x.ingredient.name === 'carbassó')?.missing).toBe(0.5)
+  })
+})
