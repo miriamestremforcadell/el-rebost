@@ -34,8 +34,8 @@ function BarcodeLookup({ onProduct, onClose }: { onProduct: (p: OffProduct) => v
   const [busy, setBusy] = useState(false)
   const controls = useRef<{ stop: () => void } | null>(null)
   const lookup = async (code: string) => {
-    const clean = code.replace(/\\s/g, '')
-    if (!/^\\d{8,14}$/.test(clean)) { setStatus('El codi ha de tenir entre 8 i 14 xifres.'); return }
+    const clean = code.replace(/\s/g, '')
+    if (!/^\d{8,14}$/.test(clean)) { setStatus('El codi ha de tenir entre 8 i 14 xifres.'); return }
     setBusy(true); setStatus('Consultant Open Food Facts…')
     try {
       const response = await fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(clean) + '.json?fields=product_name,brands,quantity')
