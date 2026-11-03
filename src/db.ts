@@ -6,14 +6,14 @@ export interface Category { id?: number; name: string; icon: string; archived?: 
 export interface Location { id?: number; name: string }
 export interface Product {
   id?: number; name: string; brand?: string; categoryId?: number; qty: number; unit: string; format?: string
-  locationId?: number; boughtAt?: string; openedAt?: string; expiry?: string; min?: number; price?: number; notes?: string; photo?: Blob
+  locationId?: number; boughtAt?: string; openedAt?: string; expiry?: string; min?: number; price?: number; notes?: string; photo?: Blob; emoji?: string
 }
 export type MovementKind = 'compra' | 'consum' | 'correcció' | 'malmès' | 'recepció' | 'manual'
 export interface Movement { id?: number; productId: number; ts: string; delta: number; kind: MovementKind; ref?: string; note?: string }
 export interface ShopList { id?: number; name: string; createdAt: string }
 export interface ListItem {
   id?: number; listId: number; name: string; qty: number; unit: string; note?: string; estPrice?: number
-  estSource?: 'última compra' | 'altre establiment' | 'manual'; storeId?: number; categoryId?: number; bought?: boolean
+  estSource?: 'última compra' | 'altre establiment' | 'manual'; storeId?: number; categoryId?: number; bought?: boolean; photo?: Blob; emoji?: string
 }
 export interface PurchaseLine { id: string; name: string; qty: number; unit: string; unitPrice?: number; amount: number; categoryId?: number }
 export interface Purchase {
@@ -254,6 +254,11 @@ export async function exportAll() {
         ...row,
         ...(row.photo instanceof Blob ? { photo: await blobToBackup(row.photo) } : {}),
       })))
+    } else if (t === 'listItems') {
+      out[t] = await Promise.all(rows.map(async (row) => ({
+        ...row,
+        ...(row.photo instanceof Blob ? { photo: await blobToBackup(row.photo) } : {}),
+      })))
     } else if (t === 'docs') {
       out[t] = await Promise.all(rows.map(async (row) => ({
         ...row,
@@ -284,6 +289,8 @@ export async function importAll(raw: unknown): Promise<{ products: number; purch
   for (const t of BACKUP_TABLES) {
     const rows = (Array.isArray(d[t]) ? d[t] : []) as Record<string, unknown>[]
     if (t === 'products') {
+      normalized[t] = rows.map((row) => ({ ...row, ...(backupToBlob(row.photo) ? { photo: backupToBlob(row.photo) } : {}) }))
+    } else if (t === 'listItems') {
       normalized[t] = rows.map((row) => ({ ...row, ...(backupToBlob(row.photo) ? { photo: backupToBlob(row.photo) } : {}) }))
     } else if (t === 'docs') {
       normalized[t] = rows.map((row) => {

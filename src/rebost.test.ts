@@ -147,10 +147,14 @@ describe('preus i còpia completa', () => {
 
   it('inclou i restaura els documents adjunts i les fotos', async () => {
     const { exportAll, importAll } = await import('./db')
-    await db.products.add({ name: 'Foto', qty: 1, unit: 'ud', photo: new Blob(['foto'], { type: 'image/jpeg' }) })
+    await db.products.add({ name: 'Foto', qty: 1, unit: 'ud', photo: new Blob(['foto'], { type: 'image/jpeg' }), emoji: '🍎' })
+    const listId = await db.lists.add({ name: 'Compra', createdAt: '2026-11-03' })
+    await db.listItems.add({ listId, name: 'Pomes', qty: 2, unit: 'ud', photo: new Blob(['foto-llista'], { type: 'image/jpeg' }), emoji: '🍎' })
     await db.docs.add({ name: 'tiquet.pdf', type: 'application/pdf', blob: new Blob(['pdf-test'], { type: 'application/pdf' }), createdAt: '2026-10-21T00:00:00.000Z' })
     const backup = JSON.parse(JSON.stringify(await exportAll()))
     await db.products.clear()
+    await db.listItems.clear()
+    await db.lists.clear()
     await db.docs.clear()
     const restored = await importAll(backup)
     expect(restored.docs).toBe(1)
@@ -158,6 +162,11 @@ describe('preus i còpia completa', () => {
     expect(await (await db.docs.toArray())[0].blob.text()).toBe('pdf-test')
     expect((await db.products.toArray())[0].photo).toBeInstanceOf(Blob)
     expect(await (await db.products.toArray())[0].photo!.text()).toBe('foto')
+    expect((await db.products.toArray())[0].emoji).toBe('🍎')
+    const restoredItem = (await db.listItems.toArray())[0]
+    expect(restoredItem.emoji).toBe('🍎')
+    expect(restoredItem.photo).toBeInstanceOf(Blob)
+    expect(await restoredItem.photo!.text()).toBe('foto-llista')
   })
 
   it('rebutja taules malformades abans de modificar dades', async () => {

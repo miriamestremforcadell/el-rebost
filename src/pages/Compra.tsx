@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, UNITS, addProduct, findProduct, type ListItem, type Purchase } from '../db'
 import { priceObservations } from '../stats'
-import { Sheet, Field, Empty, Title, num } from '../ui'
+import { Sheet, Field, Empty, Title, ProductVisual, num } from '../ui'
 import { eur } from '../talkual'
 
 export default function Compra() {
@@ -54,6 +54,7 @@ export default function Compra() {
               <ul className="space-y-2">{xs.map((i) => (
                 <li key={i.id} className="card flex items-center gap-3 !p-3">
                   <input type="checkbox" checked={!!i.bought} onChange={(e) => db.listItems.update(i.id!, { bought: e.target.checked })} aria-label={`Marca ${i.name} com a comprat`} />
+                  <ProductVisual photo={i.photo} emoji={i.emoji} fallback={cats.find((c) => c.id === i.categoryId)?.icon} size="sm" />
                   <div className={`min-w-0 flex-1 ${i.bought ? 'line-through opacity-50' : ''}`}>
                     <div className="truncate font-medium">{i.name}</div>
                     <div className="text-xs text-mute">{i.qty} {i.unit}{i.note ? ` · ${i.note}` : ''}</div>
@@ -86,6 +87,8 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
     if (!f.name?.trim()) return
     if (f.estPrice !== undefined && (!Number.isFinite(f.estPrice) || f.estPrice < 0)) { alert('El preu estimat ha de ser 0 € o superior.'); return }
     let item = { ...f, listId, name: f.name.trim() } as ListItem
+    const matchedProduct = await findProduct(item.name, item.unit)
+    if (matchedProduct) item = { ...item, categoryId: item.categoryId ?? matchedProduct.categoryId, photo: item.photo ?? matchedProduct.photo, emoji: item.emoji ?? matchedProduct.emoji }
     const stores_ = await db.stores.toArray()
     const reviewed = purchases.filter((p) => p.status === 'Revisat' && p.lines.some((line) => line.name.trim().toLowerCase() === item.name.toLowerCase() && line.unit === item.unit && p.storeId))
     if (item.storeId === undefined && !defaultStoreId && reviewed.length) {
@@ -104,7 +107,7 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
     const normalizedName = item.name.trim().toLocaleLowerCase()
     const existing = (await db.listItems.where('listId').equals(listId).toArray()).find((row) => !row.bought && row.name.trim().toLocaleLowerCase() === normalizedName && row.unit === item.unit)
     if (existing?.id !== undefined) {
-      await db.listItems.update(existing.id, { qty: Math.round((existing.qty + item.qty) * 1000) / 1000, ...(item.estPrice !== undefined ? { estPrice: item.estPrice, estSource: item.estSource } : {}), ...(item.storeId !== undefined ? { storeId: item.storeId } : {}) })
+      await db.listItems.update(existing.id, { qty: Math.round((existing.qty + item.qty) * 1000) / 1000, ...(item.estPrice !== undefined ? { estPrice: item.estPrice, estSource: item.estSource } : {}), ...(item.storeId !== undefined ? { storeId: item.storeId } : {}), ...(item.photo ? { photo: item.photo } : {}), ...(item.emoji ? { emoji: item.emoji } : {}) })
     } else {
       await db.listItems.add(item)
     }
@@ -115,13 +118,16 @@ function AddItem({ listId, cats, stores, purchases, defaultStoreId, onClose }: {
       <div className="space-y-3">
         <Field label="Producte (pots escriure'n un de nou)"><input autoFocus list="habituals" value={f.name ?? ''} onChange={(e) => { set('name', e.target.value); setSelectedProductId('') }} placeholder="Escriu el nom del producte" /></Field>
         <datalist id="habituals">{suggestions.map((p) => <option key={p.id} value={p.name} />)}</datalist>
-        <Field label="O selecciona un producte del rebost"><select value={selectedProductId} onChange={(e) => { const id = e.target.value ? Number(e.target.value) : ''; setSelectedProductId(id); const product = suggestions.find((p) => p.id === id); if (product) setF((current) => ({ ...current, name: product.name, unit: product.unit, categoryId: product.categoryId, estPrice: product.price })) }}><option value="">— Tria un producte —</option>{suggestions.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.qty} {p.unit} disponibles</option>)}</select></Field>
+        <Field label="O selecciona un producte del rebost"><select value={selectedProductId} onChange={(e) => { const id = e.target.value ? Number(e.target.value) : ''; setSelectedProductId(id); const product = suggestions.find((p) => p.id === id); if (product) setF((current) => ({ ...current, name: product.name, unit: product.unit, categoryId: product.categoryId, estPrice: product.price, photo: product.photo, emoji: product.emoji })) }}><option value="">— Tria un producte —</option>{suggestions.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.qty} {p.unit} disponibles</option>)}</select></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Quantitat"><input inputMode="decimal" value={f.qty ?? ''} onChange={(e) => set('qty', num(e.target.value))} /></Field>
           <Field label="Unitat"><select value={f.unit} onChange={(e) => set('unit', e.target.value)}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></Field>
           <Field label="Categoria"><select value={f.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value ? Number(e.target.value) : undefined)}><option value="">—</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
           <Field label="Establiment"><select value={f.storeId ?? ''} onChange={(e) => set('storeId', e.target.value ? Number(e.target.value) : undefined)}><option value="">—</option>{stores.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         </div>
+        <div className="flex items-center gap-3"><ProductVisual photo={f.photo} emoji={f.emoji} size="lg" /><div className="min-w-0 flex-1"><Field label="Foto (opcional)"><input type="file" accept="image/*" capture="environment" className="text-sm" onChange={(e) => { const file=e.target.files?.[0]; if(!file || !file.type.startsWith("image/")) return; const reader=new FileReader(); reader.onload=()=>{ const img=new Image(); img.onload=()=>{ const scale=Math.min(1,640/Math.max(img.width,img.height)); const canvas=document.createElement("canvas"); canvas.width=Math.max(1,Math.round(img.width*scale)); canvas.height=Math.max(1,Math.round(img.height*scale)); const ctx=canvas.getContext("2d"); if(ctx){ctx.drawImage(img,0,0,canvas.width,canvas.height);canvas.toBlob(blob=>{if(blob){set("photo",blob);set("emoji",undefined)}},"image/jpeg",0.78)} }; img.src=String(reader.result) }; reader.readAsDataURL(file) }} /></Field></div></div>
+        <Field label="O tria un emoji"><div className="flex flex-wrap gap-2">{["🍎","🥬","🍗","🐟","🥚","🥖","🍝","🥫","🧀","🥣","🧊","💧","🧽","🧼","🧴","🧻","🧺","🐾","☕","🍫","🍚","🥛","🫒","📦"].map(emoji=><button key={emoji} type="button" onClick={()=>{set("emoji",emoji);set("photo",undefined)}} className={`rounded-lg border p-2 text-xl ${f.emoji===emoji?"border-brand bg-page":"border-line"}`}>{emoji}</button>)}</div></Field>
+        {(f.photo || f.emoji) && <button type="button" className="btn-g" onClick={()=>{set("photo",undefined);set("emoji",undefined)}}>Treu la imatge</button>}
         <Field label="Preu estimat per unitat (€, opcional)"><input inputMode="decimal" value={f.estPrice ?? ''} onChange={(e) => set('estPrice', e.target.value ? num(e.target.value) : undefined)} /></Field>
         <Field label="Notes"><input value={f.note ?? ''} onChange={(e) => set('note', e.target.value)} /></Field>
         <button type="button" className="btn-p w-full" onClick={() => save()}>Afegeix a la llista</button>
@@ -138,8 +144,8 @@ function ConfirmBuy({ items, onClose }: { items: ListItem[]; onClose: () => void
   const run = async () => {
     for (const i of items.filter((x) => pick.has(x.id!))) {
       const have = await findProduct(i.name, i.unit)
-      if (have) { await db.products.update(have.id!, { qty: have.qty + i.qty }); await db.movements.add({ productId: have.id!, ts: new Date().toISOString(), delta: i.qty, kind: 'compra', ref: `llista:${i.id}` }) }
-      else await addProduct({ name: i.name, qty: i.qty, unit: i.unit, categoryId: i.categoryId, locationId: loc, price: i.estPrice }, 'compra', `llista:${i.id}`)
+      if (have) { await db.products.update(have.id!, { qty: have.qty + i.qty, photo: have.photo ?? i.photo, emoji: have.emoji ?? i.emoji }); await db.movements.add({ productId: have.id!, ts: new Date().toISOString(), delta: i.qty, kind: 'compra', ref: `llista:${i.id}` }) }
+      else await addProduct({ name: i.name, qty: i.qty, unit: i.unit, categoryId: i.categoryId, locationId: loc, price: i.estPrice, photo: i.photo, emoji: i.emoji }, 'compra', `llista:${i.id}`)
     }
     await db.listItems.bulkDelete(items.map((i) => i.id!))
     setDone(true)
