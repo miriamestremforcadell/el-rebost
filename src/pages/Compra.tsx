@@ -96,6 +96,7 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
   const products = useLiveQuery(() => db.products.toArray(), [], [] as Product[])
   const [adding, setAdding] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [voiceAdding, setVoiceAdding] = useState(false)
   const [scanResult, setScanResult] = useState<OffProduct | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [shoppingMode, setShoppingMode] = useState(false)
@@ -113,7 +114,7 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
   }
   return (
     <>
-      <Title right={<div className="flex gap-2"><button type="button" className="btn-s" onClick={() => setScanning(true)} disabled={!cur}>▦ Escaneja</button><button type="button" className="btn-p" onClick={() => setAdding(true)} disabled={!cur}>＋ Producte</button></div>}>Compra</Title>
+      <Title right={<div className="flex gap-2"><button type="button" className="btn-s" onClick={() => setVoiceAdding(true)} disabled={!cur}>🎙️ Veu</button><button type="button" className="btn-s" onClick={() => setScanning(true)} disabled={!cur}>▦ Escaneja</button><button type="button" className="btn-p" onClick={() => setAdding(true)} disabled={!cur}>＋ Producte</button></div>}>Compra</Title>
       <div className="mb-3 flex gap-2 overflow-x-auto">
         {lists.map((l) => <button key={l.id} onClick={() => { setSel(l.id); setStoreFilter('all') }} className={cur?.id === l.id ? 'btn-p !min-h-[36px]' : 'btn-s !min-h-[36px]'}>{l.name}</button>)}
       </div>
@@ -162,6 +163,7 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
         </>
       )}
       {shoppingMode && cur && <ShoppingMode listName={cur.name} items={items} stores={stores} cats={cats} onClose={() => { setShoppingMode(false); onModeChange?.(false) }} onConfirm={() => { setShoppingMode(false); onModeChange?.(false); setConfirming(true) }} />}
+      {voiceAdding && cur && <VoiceAdd listId={cur.id!} products={products} cats={cats} stores={stores} onClose={() => setVoiceAdding(false)} />}
       {scanning && <BarcodeLookup onProduct={(p) => { setScanResult(p); setAdding(true); setScanning(false) }} onClose={() => setScanning(false)} />}
       {adding && cur && <AddItem listId={cur.id!} cats={cats} stores={stores} purchases={purchases} scanResult={scanResult} onScanUsed={() => setScanResult(null)} defaultStoreId={typeof storeFilter === 'number' ? storeFilter : undefined} onClose={() => setAdding(false)} />}
       {confirming && cur && <ConfirmBuy listId={cur.id!} items={items.filter((i) => i.bought)} onClose={() => setConfirming(false)} />}
@@ -170,6 +172,135 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
 }
 
 
+
+
+type VoiceLine = { id: number; name: string; qty: string; unit: string }
+type SpeechRecognitionLike = {
+  lang: string
+  interimResults: boolean
+  continuous: boolean
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+  onerror: ((event: { error: string }) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SpeechRecognitionLike
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike
+  }
+}
+const NUMBER_WORDS: Record<string, number> = {
+  un: 1, una: 1, uno: 1, dos: 2, dues: 2, tres: 3, quatre: 4, cuatro: 4,
+  cinc: 5, cinco: 5, sis: 6, seis: 6, set: 7, siete: 7, vuit: 8, ocho: 8, nou: 9, nueve: 9,
+  deu: 10, diez: 10, mig: 0.5, media: 0.5, medio: 0.5
+}
+function parseVoiceItems(raw: string): VoiceLine[] {
+  const chunks = raw.replace(/[\n;]+/g, ",").split(/,|\s+ i \s+|\s+and\s+|\s+y\s+/i).map((x) => x.trim()).filter(Boolean)
+  const rows: VoiceLine[] = []
+  for (const chunk of chunks) {
+    const match = chunk.match(/^([\d]+(?:[.,]\d+)?|[a-zà-ÿ]+)?\s*(litres?|litros?|litres|l|ml|quilos?|kilos?|kg|grams?|gramos?|g|paquets?|paquetes?|ampolles?|botellas?|llaunes?|latas?|pots?|botes?|caixes?|cajas?|unitats?|unidades?|ud)?\s*(?:de\s+)?(.+)$/i)
+    if (!match) { rows.push({ id: rows.length, name: chunk, qty: "1", unit: "ud" }); continue }
+    const qtyRaw = (match[1] || "1").toLocaleLowerCase()
+    const qty = NUMBER_WORDS[qtyRaw] ?? Number(qtyRaw.replace(",", "."))
+    const unitRaw = (match[2] || "ud").toLocaleLowerCase()
+    const unit = /^(l|litre|litres|litro|litros)$/.test(unitRaw) ? "l"
+      : unitRaw === "ml" ? "ml"
+      : /^(kg|quilo|quilos|kilo|kilos)$/.test(unitRaw) ? "kg"
+      : /^(g|gram|grams|gramo|gramos)$/.test(unitRaw) ? "g"
+      : /^(paquet|paquets|paquete|paquetes)$/.test(unitRaw) ? "paquet"
+      : /^(ampolla|ampolles|botella|botellas)$/.test(unitRaw) ? "ampolla"
+      : /^(llauna|llaunes|lata|latas)$/.test(unitRaw) ? "llauna"
+      : /^(pot|pots|bote|botes)$/.test(unitRaw) ? "pot"
+      : /^(caixa|caixes|caja|cajas)$/.test(unitRaw) ? "caixa" : "ud"
+    const name = (match[3] || "").trim().replace(/^d[’\']\s*/i, "").replace(/[.!?]+$/, "")
+    if (name) rows.push({ id: rows.length, name, qty: String(Number.isFinite(qty) && qty > 0 ? qty : 1), unit })
+  }
+  return rows
+}
+function VoiceAdd({ listId, products, cats, stores, onClose }: {
+  listId: number
+  products: Product[]
+  cats: { id?: number; name: string }[]
+  stores: { id?: number; name: string }[]
+  onClose: () => void
+}) {
+  const [language, setLanguage] = useState("ca-ES")
+  const [transcript, setTranscript] = useState("")
+  const [lines, setLines] = useState<VoiceLine[]>([])
+  const [listening, setListening] = useState(false)
+  const [status, setStatus] = useState("")
+  const recognition = useRef<SpeechRecognitionLike | null>(null)
+  const supported = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  useEffect(() => () => { recognition.current?.stop() }, [])
+  const start = () => {
+    const Speech = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!Speech) { setStatus("Aquest navegador no ofereix reconeixement de veu. Pots utilitzar el dictat del teclat o escriure la frase."); return }
+    try {
+      const rec = new Speech()
+      recognition.current = rec
+      rec.lang = language
+      rec.interimResults = false
+      rec.continuous = false
+      rec.onresult = (event) => {
+        const spoken = Array.from(event.results).map((result) => result[0]?.transcript ?? "").join(" ")
+        setTranscript((current) => current ? current + ", " + spoken : spoken)
+        setStatus("Transcripció rebuda. Revisa el text abans de convertir-lo.")
+      }
+      rec.onerror = (event) => { setStatus(event.error === "not-allowed" ? "Cal donar permís al micròfon. També pots utilitzar el dictat del teclat." : "No s'ha pogut reconèixer la veu. Torna-ho a provar o utilitza el dictat del teclat."); setListening(false) }
+      rec.onend = () => setListening(false)
+      setStatus("Escoltant… parla ara.")
+      setListening(true)
+      rec.start()
+    } catch { setListening(false); setStatus("No s'ha pogut iniciar el micròfon. Pots escriure o dictar amb el teclat.") }
+  }
+  const convert = () => {
+    const parsed = parseVoiceItems(transcript)
+    setLines(parsed)
+    setStatus(parsed.length ? "Revisa els productes, les quantitats i les unitats abans d'afegir-los." : "No he pogut identificar cap producte. Prova de separar-los amb comes.")
+  }
+  const updateLine = (id: number, patch: Partial<VoiceLine>) => setLines((current) => current.map((line) => line.id === id ? { ...line, ...patch } : line))
+  const addAll = async () => {
+    const valid = lines.filter((line) => line.name.trim() && Number(line.qty.replace(",", ".")) > 0)
+    for (const line of valid) {
+      const qty = Number(line.qty.replace(",", "."))
+      const matched = products.find((p) => p.name.trim().toLocaleLowerCase("ca") === line.name.trim().toLocaleLowerCase("ca"))
+      const storeId = matched?.preferredStoreId
+      const rows = await db.listItems.where("listId").equals(listId).toArray()
+      const existing = rows.find((row) => !row.bought && row.name.trim().toLocaleLowerCase("ca") === line.name.trim().toLocaleLowerCase("ca") && row.unit === line.unit)
+      if (existing) {
+        await db.listItems.update(existing.id!, { qty: Math.round((existing.qty + qty) * 1000) / 1000, ...(storeId !== undefined ? { storeId } : {}) })
+      } else {
+        const category = matched?.categoryId
+        await db.listItems.add({ listId, name: matched?.name ?? line.name.trim(), qty, unit: line.unit, storeId, categoryId: category, photo: matched?.photo, emoji: matched?.emoji, brand: matched?.brand, barcode: matched?.barcode, estPrice: matched?.price })
+      }
+    }
+    onClose()
+  }
+  return <Sheet title="Afegeix productes per veu" onClose={onClose}>
+    <div className="space-y-3">
+      <p className="text-sm text-mute">Digues els productes seguits i revisa la llista abans d'afegir-la. Exemple: «Afegeix dos litres de llet, un paquet d'arròs i sis iogurts».</p>
+      <Field label="Idioma de reconeixement"><select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="ca-ES">Català</option><option value="es-ES">Castellà</option><option value="en-US">Anglès</option></select></Field>
+      <button type="button" className="btn-p w-full" onClick={start} disabled={listening}>{listening ? "Escoltant…" : "🎙️ Comença a parlar"}</button>
+      {!supported && <p className="text-xs text-mute">El reconeixement integrat no està disponible en aquest navegador. Pots utilitzar el micròfon del teclat per dictar dins del camp de text.</p>}
+      <Field label="Transcripció (també pots escriure o dictar amb el teclat)"><textarea rows={3} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Dos litres de llet, un paquet d'arròs…" /></Field>
+      <button type="button" className="btn-s w-full" onClick={convert} disabled={!transcript.trim()}>Converteix en productes</button>
+      {status && <p className="text-sm text-mute" role="status">{status}</p>}
+      {lines.length > 0 && <>
+        <div className="space-y-2">
+          {lines.map((line) => <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_76px_92px] gap-2 rounded-xl border border-line p-2">
+            <input aria-label="Nom del producte" value={line.name} onChange={(e) => updateLine(line.id, { name: e.target.value })} />
+            <input aria-label="Quantitat" inputMode="decimal" value={line.qty} onChange={(e) => updateLine(line.id, { qty: e.target.value })} />
+            <select aria-label="Unitat" value={line.unit} onChange={(e) => updateLine(line.id, { unit: e.target.value })}>{UNITS.map((unit) => <option key={unit}>{unit}</option>)}</select>
+          </div>)}
+        </div>
+        <button type="button" className="btn-p w-full" onClick={() => void addAll()} disabled={!lines.some((line) => line.name.trim() && Number(line.qty.replace(",", ".")) > 0)}>Afegeix {lines.length} productes a la llista</button>
+      </>}
+      <p className="text-xs text-mute">El reconeixement de veu depèn del navegador i pot enviar l'àudio al servei del proveïdor. Si no està disponible, el dictat del teclat és una alternativa. No s'afegeixen productes fins que no els revisis i confirmis.</p>
+    </div>
+  </Sheet>
+}
 
 function FavoriteProducts({ listId, products, cats, stores }: {
   listId: number
