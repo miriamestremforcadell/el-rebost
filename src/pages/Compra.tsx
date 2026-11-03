@@ -234,7 +234,10 @@ function ConfirmBuy({ listId, items, onClose }: { listId: number; items: ListIte
       if (have) { await db.products.update(have.id!, { qty: have.qty + i.qty, photo: have.photo ?? i.photo, emoji: have.emoji ?? i.emoji, brand: have.brand ?? i.brand, barcode: have.barcode ?? i.barcode }); await db.movements.add({ productId: have.id!, ts: new Date().toISOString(), delta: i.qty, kind: 'compra', ref: `llista:${i.id}` }) }
       else await addProduct({ name: i.name, qty: i.qty, unit: i.unit, categoryId: i.categoryId, locationId: loc, price: i.estPrice, photo: i.photo, emoji: i.emoji, brand: i.brand, barcode: i.barcode }, 'compra', `llista:${i.id}`)
     }
-    const actual = items.reduce((sum, i) => sum + (i.paidPrice ?? i.estPrice ?? 0) * i.qty, 0)\n    const list = await db.lists.get(listId)\n    await db.lists.update(listId, { spentTotal: (list?.spentTotal ?? 0) + actual })\n    await db.listItems.bulkDelete(items.map((i) => i.id!))
+    const actual = items.reduce((sum, i) => sum + (i.paidPrice ?? i.estPrice ?? 0) * i.qty, 0)
+    const list = await db.lists.get(listId)
+    await db.lists.update(listId, { spentTotal: (list?.spentTotal ?? 0) + actual })
+    await db.listItems.bulkDelete(items.map((i) => i.id!))
     setDone(true)
   }
   return (
