@@ -159,7 +159,7 @@ export default function Compra({ onModeChange }: { onModeChange?: (active: boole
           </div>
         </>
       )}
-      {shoppingMode && cur && <ShoppingMode listName={cur.name} items={items} stores={stores} cats={cats} onClose={() => { setShoppingMode(false); onModeChange?.(false) }} onConfirm={() => setConfirming(true)} />}
+      {shoppingMode && cur && <ShoppingMode listName={cur.name} items={items} stores={stores} cats={cats} onClose={() => { setShoppingMode(false); onModeChange?.(false) }} onConfirm={() => { setShoppingMode(false); onModeChange?.(false); setConfirming(true) }} />}
       {scanning && <BarcodeLookup onProduct={(p) => { setScanResult(p); setAdding(true); setScanning(false) }} onClose={() => setScanning(false)} />}
       {adding && cur && <AddItem listId={cur.id!} cats={cats} stores={stores} purchases={purchases} scanResult={scanResult} onScanUsed={() => setScanResult(null)} defaultStoreId={typeof storeFilter === 'number' ? storeFilter : undefined} onClose={() => setAdding(false)} />}
       {confirming && cur && <ConfirmBuy listId={cur.id!} items={items.filter((i) => i.bought)} onClose={() => setConfirming(false)} />}
