@@ -6,7 +6,7 @@ export interface Category { id?: number; name: string; icon: string; archived?: 
 export interface Location { id?: number; name: string }
 export interface Product {
   id?: number; name: string; brand?: string; barcode?: string; categoryId?: number; qty: number; unit: string; format?: string
-  locationId?: number; boughtAt?: string; openedAt?: string; expiry?: string; min?: number; price?: number; notes?: string; photo?: Blob; emoji?: string
+  locationId?: number; boughtAt?: string; openedAt?: string; expiry?: string; min?: number; price?: number; notes?: string; photo?: Blob; emoji?: string; favorite?: boolean; habitualQty?: number; habitualUnit?: string; preferredStoreId?: number
 }
 export type MovementKind = 'compra' | 'consum' | 'correcció' | 'malmès' | 'recepció' | 'manual'
 export interface Movement { id?: number; productId: number; ts: string; delta: number; kind: MovementKind; ref?: string; note?: string }
